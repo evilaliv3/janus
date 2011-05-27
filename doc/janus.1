@@ -1,0 +1,45 @@
+.TH Janus 1
+.PP
+.SH NAME
+Janus 1.0 usage
+.PP
+.SH SYNOPSIS
+Janus [OPTION]...
+.PP
+.SH DESCRIPTION
+Janus is a portable interface for mitm applications over the routing table.
+.PP
+It acts like a deamon and offers two simple stream sockets, one for the input and one for the output manipulations.
+.PP
+Over this sockets, before a packet, it's always appended it's size (16bit), and Janus expects to receive data back with this precise format.
+.PP
+The code is a portable and optimized rewrite of a first idea implemented in SniffJoke software written by Claudio Agosti.
+.PP
+The software overrides the actual routing table, creating a fake gateway with the aim to block packets after the kernel (on outgouing traffic) and before the kernel (on incoming traffic)
+.PP
+The options usefull when Janus is started are:
+.PP
+.SH JANUS OPTIONS 
+.PP
+.B --net <ip/mask> [default: 0.0.0.0/0.0.0.0]
+.PP
+.B --listen-ip-addres <ip> [default: 127.0.0.1]
+.PP
+.B --listen-port-in <port> [default: 30201]
+.PP
+.B --listen-port-out <port> [default: 10203]
+.PP
+.B --version 
+show Janus version
+.PP
+.B --help 
+show a command line options resume
+.PP
+.PP
+.SH "AUTHOR"
+Giovanni Pellerano <giovanni.pellerano@evilaliv3.org>, Claudio Agosti <vecna@delirandom.net>
+.PP
+.SH "REPORTING BUGS"
+Report bugs to <giovanni.pellerano@evilaliv3.org>.
+.SH "COPYRIGHT"
+Copyright (GPL) 2011 Giovanni Pellerano & Claudio Agosti
