@@ -1,6 +1,6 @@
 /*
- * Janus, a portable, unified and lightweight interface for mitm
- * applications over the routing table.
+ *   Janus, a portable, unified and lightweight interface for mitm
+ *   applications over the routing table.
  *
  *   Copyright (C) 2011 evilaliv3 <giovanni.pellerano@evilaliv3.org>
  *                      vecna <vecna@delirandom.net>
