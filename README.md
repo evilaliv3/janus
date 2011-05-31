@@ -68,6 +68,39 @@ Janus overrides the actual routing table, creating a fake gateway with the aim t
     212.77.1.2      0.0.0.0         255.255.255.255 UH    0      0        0 janus1
     0.0.0.0         10.196.135.1    0.0.0.0         UG    0      0        0 eth0
 
+## Client POC
+
+% This is a proof of concept written in Erlang that implements a simple Janus Client.
+% It shows how simple is the Janus interface executing a simple packet-echo.
+%
+% Usage: erl -compile janus_client_poc && erl --noshell -s janus_client_poc start
+%
+
+-module(janus_client_poc).
+-export([start/0]).
+
+start() ->
+    JanusHost = "127.0.0.1",
+    JanusPort1 = 10203,
+    JanusPort2 = 30201,
+    spawn(fun() -> connect(JanusHost, JanusPort1) end),
+    spawn(fun() -> connect(JanusHost, JanusPort2) end).
+
+connect(Host, Port) ->
+    {ok, Socket} = gen_tcp:connect(Host, Port, [{active,false}, {packet,0}]),
+    echo_loop(Socket).
+
+echo_loop(Socket) ->
+    case gen_tcp:recv(Socket, 0) of
+        {ok, Data} ->
+            % eventual packet mangling activity
+            gen_tcp:send(Socket, Data),
+            echo_loop(Socket);
+        {error, _} ->
+            ok
+    end.
+
+
 ## Installed files (paths may vary on your system)
 
 Janus binary /usr/local/sbin/janus
