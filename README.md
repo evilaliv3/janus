@@ -93,7 +93,7 @@ Janus overrides the actual routing table, creating a fake gateway with the aim t
     echo_loop(Socket) ->
         case gen_tcp:recv(Socket, 0) of
             {ok, Data} ->
-                % eventual packet mangling activity
+                % potential packet mangling activity
                 gen_tcp:send(Socket, Data),
                 echo_loop(Socket);
             {error, _} ->
