@@ -29,7 +29,7 @@
 
 struct packet* new_packet(uint32_t size)
 {
-    const uint32_t realsize = (sizeof (struct packet)) + (2 * (sizeof (uint16_t))) + size;
+    const uint32_t realsize = (sizeof (struct packet)) + (sizeof (uint16_t)) + size;
 
     struct packet * const ret = (struct packet *) malloc(realsize);
 
