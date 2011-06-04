@@ -8,4 +8,4 @@ INSTALL( TARGETS janus
 
 SET( CMAKE_C_FLAGS "-O3 -Wall -g3 -pedantic ${CMAKE_C_FLAGS}" )
 
-TARGET_LINK_LIBRARIES( janus "-levent" )
+TARGET_LINK_LIBRARIES( janus "-levent -lpcap" )

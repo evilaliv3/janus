@@ -32,12 +32,12 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <net/if.h>
-#include <netpacket/packet.h>
 #include <linux/if_tun.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 
 #include <event.h>
+#include <pcap.h>
 
 #include "janus.h"
 #include "packet_queue.h"
@@ -49,15 +49,22 @@ enum mitm_t
 
 struct janus_config conf;
 
-static char net_if[CONST_JANUS_BUFSIZE] = {0};
-static char net_ip[CONST_JANUS_BUFSIZE] = {0};
-static char tun_if[CONST_JANUS_BUFSIZE] = {0};
-static char tun_ip[CONST_JANUS_BUFSIZE] = {0};
-static char gw_ip[CONST_JANUS_BUFSIZE] = {0};
-static char gw_mac[CONST_JANUS_BUFSIZE] = {0};
-static uint16_t mtu;
+pcap_t *capnet = NULL;
+char ebuf[PCAP_ERRBUF_SIZE];
 
-static struct sockaddr_ll gw_send_ll;
+static char net_if_str[CONST_JANUS_BUFSIZE] = {0};
+static char net_ip_str[CONST_JANUS_BUFSIZE] = {0};
+static uint8_t netif_recv_hdr[ETH_HLEN] = {0};
+static uint8_t netif_send_hdr[ETH_HLEN] = {0};
+
+static char tun_if_str[CONST_JANUS_BUFSIZE] = {0};
+static char tun_ip_str[CONST_JANUS_BUFSIZE] = {0};
+
+static char gw_ip_str[CONST_JANUS_BUFSIZE] = {0};
+static char gw_mac_str[CONST_JANUS_BUFSIZE] = {0};
+static uint8_t gw_mac[ETH_ALEN] = {0};
+
+static uint16_t mtu;
 
 static int fd[6] = {-1};
 static struct event ev_recv[6];
@@ -162,25 +169,24 @@ static void mitm_attach(uint8_t i, uint8_t j)
     fd[j] = accept(fd[i], NULL, NULL);
     if (fd[j] != -1)
     {
-        setfdflag(fd[j], FD_CLOEXEC | O_NONBLOCK);
+        setfdflag(fd[j], O_NONBLOCK);
     }
     else
     {
-        if ((errno != EAGAIN) && (errno != EWOULDBLOCK))
+        if (errno != EAGAIN)
             event_loopbreak();
     }
 }
 
 static size_t netif_recv(const struct packet* pkt)
 {
-    struct sockaddr_ll from_ll;
-    socklen_t fromlen = sizeof (struct sockaddr_ll);
+    struct pcap_pkthdr header;
+    const u_char *packet = pcap_next(capnet, &header);
 
-    const size_t ret = recvfrom(fd[NET], pkt->buf, pkt->size, 0x00, (struct sockaddr *) &from_ll, &fromlen);
-
-    if ((ret != -1) && !(memcmp(&gw_send_ll.sll_addr, from_ll.sll_addr, ETH_ALEN)))
+    if ((header.len) && !memcmp(packet, netif_recv_hdr, ETH_HLEN))
     {
-        return ret;
+        memcpy(pkt->buf, packet + ETH_HLEN, header.len - ETH_HLEN);
+        return header.len - ETH_HLEN;
     }
     else
     {
@@ -191,7 +197,25 @@ static size_t netif_recv(const struct packet* pkt)
 
 static size_t netif_send(const struct packet* pkt)
 {
-    return sendto(fd[NET], pkt->buf, pkt->size, 0x00, (struct sockaddr *) &gw_send_ll, sizeof (gw_send_ll));
+    size_t ret = -1;
+    size_t macpkt_size = pkt->size + ETH_HLEN;
+    char *macpkt = malloc(macpkt_size);
+    if (macpkt != NULL)
+    {
+        memcpy(macpkt, netif_send_hdr, ETH_HLEN);
+        memcpy(&macpkt[ETH_HLEN], pkt->buf, pkt->size);
+        ret = pcap_inject(capnet, macpkt, macpkt_size);
+        if (ret)
+            ret = ret - ETH_HLEN;
+        else
+        {
+            errno = EAGAIN;
+
+            return -1;
+        }
+        free(macpkt);
+    }
+    return ret;
 }
 
 static size_t tunif_recv(const struct packet* pkt)
@@ -214,6 +238,7 @@ static void recv_wrapper(int f, short event, void *arg)
     if ((pbuf_recv[i] != NULL) || ((pbuf_recv[i] = new_packet(mtu)) != NULL))
     {
         const size_t ret = fd_recv[i](pbuf_recv[i]);
+
         if (ret != -1)
         {
             struct packet *pbuf_tmp = new_packet(ret);
@@ -226,7 +251,7 @@ static void recv_wrapper(int f, short event, void *arg)
         }
         else
         {
-            if ((errno != EAGAIN) && (errno != EWOULDBLOCK))
+            if (errno != EAGAIN)
                 event_loopbreak();
         }
     }
@@ -254,7 +279,7 @@ static void send_wrapper(int f, short event, void *arg)
         }
         else
         {
-            if ((ret != -1) || ((errno != EAGAIN) && (errno != EWOULDBLOCK)))
+            if ((ret != -1) || (errno != EAGAIN))
                 event_loopbreak();
             else
                 event_add(&ev_send[i], NULL);
@@ -318,7 +343,7 @@ static void mitmrecv_wrapper(int f, short event, void *arg)
         }
     }
 
-    if ((ret != -1) || ((errno != EAGAIN) && (errno != EWOULDBLOCK)))
+    if ((ret != -1) || (errno != EAGAIN))
         mitm_rs_error_error(i);
 }
 
@@ -341,7 +366,7 @@ static void mitmsend_wrapper(int f, short event, void *arg)
             return;
         }
 
-        if ((ret != -1) || ((errno != EAGAIN) && (errno != EWOULDBLOCK)))
+        if ((ret != -1) || (errno != EAGAIN))
             mitm_rs_error_error(i);
 
         else
@@ -366,63 +391,52 @@ static void mitmattach_wrapper(int f, short event, void *arg)
 
 static uint8_t setupNET(void)
 {
-    int net = -1;
-
     struct ifreq tmpifr;
-    uint32_t mac[6];
     int tmpfd;
-    uint8_t i;
-
-    if ((net = socket(PF_PACKET, SOCK_DGRAM, htons(ETH_P_IP))) == -1)
-        runtime_exception("unable to open datalink layer for net interface");
-
-    setfdflag(net, FD_CLOEXEC | O_NONBLOCK);
-
-    memset(&tmpifr, 0x00, sizeof (tmpifr));
-    strncpy(tmpifr.ifr_name, net_if, sizeof (tmpifr.ifr_name));
-    if (ioctl(net, SIOCGIFINDEX, &tmpifr) == -1)
-        runtime_exception("unable to execute ioctl(SIOCGIFINDEX) on interface %s", net_if);
-
-    memset(&gw_send_ll, 0x00, sizeof (gw_send_ll));
-    gw_send_ll.sll_family = PF_PACKET;
-    gw_send_ll.sll_protocol = htons(ETH_P_IP);
-    gw_send_ll.sll_ifindex = tmpifr.ifr_ifindex;
-    gw_send_ll.sll_hatype = 0;
-    gw_send_ll.sll_pkttype = PACKET_HOST;
-    gw_send_ll.sll_halen = ETH_ALEN;
-
-    sscanf(gw_mac, "%2x:%2x:%2x:%2x:%2x:%2x", &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]);
-    for (i = 0; i < ETH_ALEN; ++i)
-        gw_send_ll.sll_addr[i] = mac[i];
-
-    if (bind(net, (struct sockaddr *) &gw_send_ll, sizeof (gw_send_ll)) == -1)
-        runtime_exception("unable to bind datalink layer on interface %s", net_if);
 
     tmpfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
 
+    memset(&tmpifr, 0x00, sizeof (tmpifr));
+    strncpy(tmpifr.ifr_name, net_if_str, sizeof (tmpifr.ifr_name));
+    if (ioctl(tmpfd, SIOCGIFINDEX, &tmpifr) == -1)
+        runtime_exception("unable to execute ioctl(SIOCGIFINDEX) on interface %s", net_if_str);
+
+    if (ioctl(tmpfd, SIOCGIFHWADDR, &tmpifr) == -1)
+        runtime_exception("unable to execute ioctl(SIOCGIFHWADDR) on interface %s", net_if_str);
+
+    memcpy(netif_send_hdr, gw_mac, ETH_ALEN);
+    memcpy(&netif_send_hdr[ETH_ALEN], tmpifr.ifr_hwaddr.sa_data, ETH_ALEN);
+    *(uint16_t *) & netif_send_hdr[2 * ETH_ALEN] = htons(ETH_P_IP);
+
+    memcpy(netif_recv_hdr, tmpifr.ifr_hwaddr.sa_data, ETH_ALEN);
+    memcpy(&netif_recv_hdr[ETH_ALEN], gw_mac, ETH_ALEN);
+    *(uint16_t *) & netif_recv_hdr[2 * ETH_ALEN] = htons(ETH_P_IP);
+
     if (ioctl(tmpfd, SIOCGIFMTU, &tmpifr) == -1)
-        runtime_exception("unable to get MTU (SIOCGIFMTU) on interface: %s", net_if);
+        runtime_exception("unable to execute ioctl(SIOCGIFMTU) on interface: %s", net_if_str);
+    
     mtu = tmpifr.ifr_mtu;
 
     close(tmpfd);
 
-    return net;
+    capnet = pcap_open_live(net_if_str, ETH_HLEN + mtu, 0, -1, ebuf);
+    if (capnet == NULL)
+        runtime_exception("unable to open pcap handle on interface %s", net_if_str);
+
+    return pcap_fileno(capnet);
 }
 
 static uint8_t setupTUN(void)
 {
-    int tun = -1;
-
     const char *tundev = "/dev/net/tun";
 
     struct ifreq tmpifr;
     int tmpfd;
     int i;
 
-    if ((tun = open(tundev, O_RDWR)) == -1)
-        runtime_exception("unable to open %s: check the kernel module", tundev);
-
-    setfdflag(tun, FD_CLOEXEC | O_NONBLOCK);
+    int tun = open(tundev, O_RDWR);
+    if(tun == -1)
+        runtime_exception("unable to open %s", tundev);
 
     memset(&tmpifr, 0x00, sizeof (tmpifr));
     tmpifr.ifr_flags = IFF_TUN | IFF_NO_PI;
@@ -437,9 +451,8 @@ static uint8_t setupTUN(void)
             runtime_exception("unable to set tun flags (TUNSETIFF)");
     }
 
-    snprintf(tun_if, sizeof (tun_if), tmpifr.ifr_name);
-
-    snprintf(tun_ip, sizeof (tun_ip), "%s%u", CONST_JANUS_FAKEGW_IP, i + 1);
+    snprintf(tun_if_str, sizeof (tun_if_str), tmpifr.ifr_name);
+    snprintf(tun_ip_str, sizeof (tun_ip_str), "%s%u", CONST_JANUS_FAKEGW_IP, i + 1);
 
     tmpfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
 
@@ -455,14 +468,14 @@ static uint8_t setupTUN(void)
         runtime_exception("unable to set tun mtu (SIOCSIFMTU)");
 
     ((struct sockaddr_in *) &tmpifr.ifr_addr)->sin_family = AF_INET;
-    ((struct sockaddr_in *) &tmpifr.ifr_addr)->sin_addr.s_addr = inet_addr(net_ip);
+    ((struct sockaddr_in *) &tmpifr.ifr_addr)->sin_addr.s_addr = inet_addr(net_ip_str);
     if (ioctl(tmpfd, SIOCSIFADDR, &tmpifr) == -1)
-        runtime_exception("unable to set tun local addr to %s", net_ip);
+        runtime_exception("unable to set tun local addr to %s", net_ip_str);
 
     ((struct sockaddr_in *) &tmpifr.ifr_addr)->sin_family = AF_INET;
-    ((struct sockaddr_in *) &tmpifr.ifr_addr)->sin_addr.s_addr = inet_addr(tun_ip);
+    ((struct sockaddr_in *) &tmpifr.ifr_addr)->sin_addr.s_addr = inet_addr(tun_ip_str);
     if (ioctl(tmpfd, SIOCSIFDSTADDR, &tmpifr) == -1)
-        runtime_exception("unable to set tun point-to-point dest addr to %s", tun_ip);
+        runtime_exception("unable to set tun point-to-point dest addr to %s", tun_ip_str);
 
     close(tmpfd);
 
@@ -477,8 +490,6 @@ static int setupMitmAttach(uint16_t port)
 
     if ((fd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
         runtime_exception("unable to open socket");
-
-    setfdflag(fd, FD_CLOEXEC);
 
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof (int));
 
@@ -499,43 +510,49 @@ static int setupMitmAttach(uint16_t port)
 
 uint8_t JANUS_Bootstrap(void)
 {
+    unsigned int mac[ETH_ALEN];
+
     uint8_t i;
 
-    execOSCmd(net_if, sizeof (net_if), "route -n | sed -n 's/^\\(%s\\).* \\([0-9.]\\{7,15\\}\\) .*\\(%s\\).*UG.* \\(.*\\)$/\\4/p'", conf.netip, conf.netmask);
-    if (!strlen(net_if))
+    execOSCmd(net_if_str, sizeof (net_if_str), "route -n | sed -n 's/^\\(%s\\).* \\([0-9.]\\{7,15\\}\\) .*\\(%s\\).*UG.* \\(.*\\)$/\\4/p'", conf.netip, conf.netmask);
+    if (!strlen(net_if_str))
     {
         runtime_exception("unable to detect default gateway interface");
         return -1;
     }
 
-    printf("detected default gateway interface: [%s]\n", net_if);
+    printf("detected default gateway interface: [%s]\n", net_if_str);
 
-    execOSCmd(net_ip, sizeof (net_ip), "ifconfig %s | sed -n 's/.*inet addr:\\([0-9.]\\+\\) .*$/\\1/p'", net_if);
-    if (!strlen(net_ip))
+    execOSCmd(net_ip_str, sizeof (net_ip_str), "ifconfig %s | sed -n 's/.*inet addr:\\([0-9.]\\+\\) .*$/\\1/p'", net_if_str);
+    if (!strlen(net_ip_str))
     {
-        runtime_exception("unable to detect ", net_if, " ip address");
+        runtime_exception("unable to detect ", net_if_str, " ip address");
         return -1;
     }
 
-    printf("detected local ip address on interface %s: [%s]\n", net_if, net_ip);
+    printf("detected local ip address on interface %s: [%s]\n", net_if_str, net_ip_str);
 
-    execOSCmd(gw_ip, sizeof (gw_ip), "route -n | sed -n 's/^\\(%s\\).* \\([0-9.]\\{7,15\\}\\) .*\\(%s\\).*UG.* %s$/\\2/p'", conf.netip, conf.netmask, net_if);
-    if (!strlen(gw_ip))
+    execOSCmd(gw_ip_str, sizeof (gw_ip_str), "route -n | sed -n 's/^\\(%s\\).* \\([0-9.]\\{7,15\\}\\) .*\\(%s\\).*UG.* %s$/\\2/p'", conf.netip, conf.netmask, net_if_str);
+    if (!strlen(gw_ip_str))
     {
         runtime_exception("unable to detect default gateway ip address");
         return -1;
     }
 
-    printf("detected default gateway ip address: [%s]\n", gw_ip);
+    printf("detected default gateway ip address: [%s]\n", gw_ip_str);
 
-    execOSCmd(gw_mac, sizeof (gw_mac), "arp -ni %s %s | sed -n 's/^.*\\([a-f0-9:]\\{17,17\\}\\).*$/\\1/p'", net_if, gw_ip);
-    if (!strlen(gw_mac))
+    execOSCmd(gw_mac_str, sizeof (gw_mac_str), "arp -ni %s %s | sed -n 's/^.*\\([a-f0-9:]\\{17,17\\}\\).*$/\\1/p'", net_if_str, gw_ip_str);
+    if (!strlen(gw_mac_str))
     {
         runtime_exception("unable to detect default gateway mac address");
         return -1;
     }
 
-    printf("detected default gateway mac address: [%s]\n", gw_mac);
+    sscanf(gw_mac_str, "%02x:%02x:%02x:%02x:%02x:%02x", &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]);
+    for (i = 0; i < ETH_ALEN; ++i)
+        gw_mac[i] = mac[i];
+
+    printf("detected default gateway mac address: [%s]\n", gw_mac_str);
 
     fd[NET] = setupNET();
     fd[TUN] = setupTUN();
@@ -562,9 +579,9 @@ uint8_t JANUS_Bootstrap(void)
     fd_recv[TUN] = tunif_recv;
     fd_send[TUN] = tunif_send;
 
-    execOSCmd(NULL, 0, "route del -net %s netmask %s gw %s dev %s", conf.netip, conf.netmask, gw_ip, net_if);
-    execOSCmd(NULL, 0, "route add -net %s netmask %s gw %s dev %s", conf.netip, conf.netmask, tun_ip, tun_if);
-    execOSCmd(NULL, 0, "iptables -A INPUT -m mac --mac-source %s -j DROP", gw_mac);
+    execOSCmd(NULL, 0, "route del -net %s netmask %s gw %s dev %s", conf.netip, conf.netmask, gw_ip_str, net_if_str);
+    execOSCmd(NULL, 0, "route add -net %s netmask %s gw %s dev %s", conf.netip, conf.netmask, tun_ip_str, tun_if_str);
+    execOSCmd(NULL, 0, "iptables -A INPUT -m mac --mac-source %s -j DROP", gw_mac_str);
 
     return 0;
 }
@@ -584,9 +601,9 @@ uint8_t JANUS_Shutdown(void)
             close(fd[i]);
     }
 
-    execOSCmd(NULL, 0, "route del -net %s netmask %s gw %s dev %s", conf.netip, conf.netmask, tun_ip, tun_if);
-    execOSCmd(NULL, 0, "route add -net %s netmask %s gw %s dev %s", conf.netip, conf.netmask, gw_ip, net_if);
-    execOSCmd(NULL, 0, "iptables -D INPUT -m mac --mac-source %s -j DROP", gw_mac);
+    execOSCmd(NULL, 0, "route del -net %s netmask %s gw %s dev %s", conf.netip, conf.netmask, tun_ip_str, tun_if_str);
+    execOSCmd(NULL, 0, "route add -net %s netmask %s gw %s dev %s", conf.netip, conf.netmask, gw_ip_str, net_if_str);
+    execOSCmd(NULL, 0, "iptables -D INPUT -m mac --mac-source %s -j DROP", gw_mac_str);
 
     return 0;
 }

@@ -7,7 +7,7 @@ Janus overrides the actual routing table, creating a fake gateway with the aim t
 
 # Requirements
 
-    cmake, gcc, iptables, route, sed
+    cmake, gcc, libevent, libpcap, iptables, route, sed
 
 # Below are some examples starting from this common routing table:
 
