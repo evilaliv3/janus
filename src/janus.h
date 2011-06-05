@@ -25,14 +25,13 @@
 #define CONST_JANUS_VERSION         "0.1"
 #define CONST_JANUS_IFNAME          "janus"
 #define CONST_JANUS_FAKEGW_IP       "212.77.1."
-#define CONST_JANUS_FAKEGW_MAC      "D3F4C3D3F4C3"
 #define CONST_JANUS_NETIP           "0.0.0.0"
 #define CONST_JANUS_NETMASK         "0.0.0.0"
 #define CONST_JANUS_LISTEN_IP       "127.0.0.1"
 #define CONST_JANUS_LISTEN_PORT_IN  30201
 #define CONST_JANUS_LISTEN_PORT_OUT 10203
 #define CONST_JANUS_BUFSIZE         4096
-#define PQUEUE_LEN                  6400
+#define PQUEUE_LEN                  1024
 #define REGEXP_IPV4                 "([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})"
 #define REGEXP_HOST                 "^"REGEXP_IPV4"$"
 #define REGEXP_NET                  "^"REGEXP_IPV4"/"REGEXP_IPV4"$"

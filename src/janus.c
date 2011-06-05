@@ -124,7 +124,7 @@ static void setfdflag(int fd, long flags)
 {
     long tmpflags;
     if (((tmpflags = fcntl(fd, F_GETFD)) == -1) || (fcntl(fd, F_SETFD, tmpflags | flags) == -1))
-        runtime_exception("unable to set flags %u on fd %u (F_GETFD/F_SETFD): %s", flags, fd);
+        runtime_exception("unable to set flags %u on fd %u (F_GETFD/F_SETFD)", fd, flags);
 }
 
 static struct packet* bufferedRead(enum mitm_t i)
@@ -169,7 +169,7 @@ static void mitm_attach(uint8_t i, uint8_t j)
     fd[j] = accept(fd[i], NULL, NULL);
     if (fd[j] != -1)
     {
-        setfdflag(fd[j], O_NONBLOCK);
+        setfdflag(fd[j], FD_CLOEXEC | O_NONBLOCK);
     }
     else
     {
@@ -183,7 +183,7 @@ static size_t netif_recv(const struct packet* pkt)
     struct pcap_pkthdr header;
     const u_char *packet = pcap_next(capnet, &header);
 
-    if ((header.len) && !memcmp(packet, netif_recv_hdr, ETH_HLEN))
+    if ((packet != NULL) && !memcmp(packet, netif_recv_hdr, ETH_HLEN))
     {
         memcpy(pkt->buf, packet + ETH_HLEN, header.len - ETH_HLEN);
         return header.len - ETH_HLEN;
@@ -197,25 +197,23 @@ static size_t netif_recv(const struct packet* pkt)
 
 static size_t netif_send(const struct packet* pkt)
 {
-    size_t ret = -1;
     size_t macpkt_size = pkt->size + ETH_HLEN;
     char *macpkt = malloc(macpkt_size);
     if (macpkt != NULL)
     {
+        size_t ret = -1;
         memcpy(macpkt, netif_send_hdr, ETH_HLEN);
         memcpy(&macpkt[ETH_HLEN], pkt->buf, pkt->size);
         ret = pcap_inject(capnet, macpkt, macpkt_size);
-        if (ret)
-            ret = ret - ETH_HLEN;
-        else
-        {
-            errno = EAGAIN;
-
-            return -1;
-        }
         free(macpkt);
+        if (ret == macpkt_size)
+            return ret - ETH_HLEN;
+
+        return -1;
     }
-    return ret;
+
+    errno = EAGAIN;
+    return -1;
 }
 
 static size_t tunif_recv(const struct packet* pkt)
@@ -308,7 +306,6 @@ static void mitm_rs_error_error(enum mitm_t i)
     default:
         printf("!? [%s:%u]: %u", __func__, __LINE__, i);
         raise(SIGTERM);
-
         break;
     }
 }
@@ -376,7 +373,6 @@ static void mitmsend_wrapper(int f, short event, void *arg)
 
 static void mitmattach_wrapper(int f, short event, void *arg)
 {
-
     const enum mitm_t i = *(enum mitm_t *) arg;
 
     const int j = (i == NETMITMATTACH) ? NETMITM : TUNMITM;
@@ -393,6 +389,8 @@ static uint8_t setupNET(void)
 {
     struct ifreq tmpifr;
     int tmpfd;
+
+    int net = -1;
 
     tmpfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
 
@@ -414,7 +412,7 @@ static uint8_t setupNET(void)
 
     if (ioctl(tmpfd, SIOCGIFMTU, &tmpifr) == -1)
         runtime_exception("unable to execute ioctl(SIOCGIFMTU) on interface: %s", net_if_str);
-    
+
     mtu = tmpifr.ifr_mtu;
 
     close(tmpfd);
@@ -423,7 +421,14 @@ static uint8_t setupNET(void)
     if (capnet == NULL)
         runtime_exception("unable to open pcap handle on interface %s", net_if_str);
 
-    return pcap_fileno(capnet);
+    if (pcap_setnonblock(capnet, 1, ebuf) == -1)
+        runtime_exception("unable to set pcap handle in non blocking mode on interface %s", net_if_str);
+
+    net = pcap_fileno(capnet);
+
+    setfdflag(net, FD_CLOEXEC);
+
+    return net;
 }
 
 static uint8_t setupTUN(void)
@@ -435,7 +440,7 @@ static uint8_t setupTUN(void)
     int i;
 
     int tun = open(tundev, O_RDWR);
-    if(tun == -1)
+    if (tun == -1)
         runtime_exception("unable to open %s", tundev);
 
     memset(&tmpifr, 0x00, sizeof (tmpifr));
@@ -478,6 +483,8 @@ static uint8_t setupTUN(void)
         runtime_exception("unable to set tun point-to-point dest addr to %s", tun_ip_str);
 
     close(tmpfd);
+
+    setfdflag(tun, FD_CLOEXEC | O_NONBLOCK);
 
     return tun;
 }
@@ -589,6 +596,13 @@ uint8_t JANUS_Bootstrap(void)
 uint8_t JANUS_Shutdown(void)
 {
     uint8_t i;
+
+    if (capnet != NULL)
+    {
+        pcap_close(capnet);
+        capnet = NULL;
+    }
+
     for (i = 0; i < 6; ++i)
     {
         if (i < 4)
@@ -598,7 +612,9 @@ uint8_t JANUS_Shutdown(void)
         }
 
         if (fd[i] != -1)
+        {
             close(fd[i]);
+        }
     }
 
     execOSCmd(NULL, 0, "route del -net %s netmask %s gw %s dev %s", conf.netip, conf.netmask, tun_ip_str, tun_if_str);

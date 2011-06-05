@@ -57,7 +57,7 @@ static void janus_help(const char *pname)
 
 static void janus_version(const char *pname)
 {
-    printf("Janus 1.0\n");
+    printf("Janus %s\n", CONST_JANUS_VERSION);
 }
 
 void handler_termination(int signum)
