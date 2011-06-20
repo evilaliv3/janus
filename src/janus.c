@@ -125,7 +125,14 @@ static void setfdflag(int fd, long flags)
 {
     long tmpflags;
     if (((tmpflags = fcntl(fd, F_GETFD)) == -1) || (fcntl(fd, F_SETFD, tmpflags | flags) == -1))
-        runtime_exception("unable to set flags %u on fd %u (F_GETFD/F_SETFD)", fd, flags);
+        runtime_exception("unable to set fd flags %u on fd %u (F_GETFD/F_SETFD)", fd, flags);
+}
+
+static void setflflag(int fd, long flags)
+{
+    long tmpflags;
+    if (((tmpflags = fcntl(fd, F_GETFL)) == -1) || (fcntl(fd, F_SETFL, tmpflags | flags) == -1))
+        runtime_exception("unable to set fl flags %u on fd %u (F_GETFL/F_SETFL)", fd, flags);
 }
 
 static struct packet* bufferedRead(enum mitm_t i)
@@ -170,7 +177,8 @@ static void mitm_attach(uint8_t i, uint8_t j)
     fd[j] = accept(fd[i], NULL, NULL);
     if (fd[j] != -1)
     {
-        setfdflag(fd[j], FD_CLOEXEC | O_NONBLOCK);
+        setfdflag(fd[j], FD_CLOEXEC);
+        setflflag(fd[j], O_NONBLOCK);
     }
     else
     {
@@ -485,7 +493,8 @@ static uint8_t setupTUN(void)
 
     close(tmpfd);
 
-    setfdflag(tun, FD_CLOEXEC | O_NONBLOCK);
+    setfdflag(tun, FD_CLOEXEC);
+    setflflag(tun, O_NONBLOCK);
 
     return tun;
 }
