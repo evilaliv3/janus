@@ -78,7 +78,7 @@ static void sigtrapSetup(void(sigtrap_function) (int))
     sigaddset(&sig_nset, SIGINT);
     sigaddset(&sig_nset, SIGABRT);
     sigaddset(&sig_nset, SIGPIPE);
-    sigaddset(&sig_nset, SIGSEGV);
+    //sigaddset(&sig_nset, SIGSEGV);
     sigaddset(&sig_nset, SIGTERM);
     sigaddset(&sig_nset, SIGQUIT);
 
@@ -89,7 +89,7 @@ static void sigtrapSetup(void(sigtrap_function) (int))
     sigaction(SIGINT, &action, NULL);
     sigaction(SIGABRT, &action, NULL);
     sigaction(SIGPIPE, &action, NULL);
-    sigaction(SIGSEGV, &action, NULL);
+    //sigaction(SIGSEGV, &action, NULL);
     sigaction(SIGTERM, &action, NULL);
     sigaction(SIGQUIT, &action, NULL);
     sigaction(SIGUSR1, &action, NULL);
