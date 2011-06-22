@@ -142,6 +142,23 @@ static struct packet* bufferedRead(enum mitm_t i)
     return queue_extract(&pqueue[i]);
 }
 
+static void mitmsend_wrapper(struct bufferevent *sabe, void *arg)
+{
+    const enum mitm_t i = *(enum mitm_t *) arg;
+    const int k = (i == NETMITM) ? 0 : 1;
+
+    if ((pbuf_send[i] != NULL) || ((pbuf_send[i] = bufferedRead(i)) != NULL))
+    {
+        size_t ret = bufferevent_write(mitm_bufferevent[k], pbuf_send[i]->packed_buf, pbuf_send[i]->packed_size);
+        if (!ret)
+        {
+            printf("send %u %u\n", i, pbuf_send[i]->packed_size);
+
+            free_packet(&pbuf_send[i]);
+        }
+    }
+}
+
 static void bufferedWrite(enum mitm_t i, struct packet * pkt)
 {
     switch (i)
@@ -166,14 +183,12 @@ static void bufferedWrite(enum mitm_t i, struct packet * pkt)
 
     queue_insert(&pqueue[i], pkt);
 
-    if (i == TUN || i == NET)
+    if ((i == TUN) || (i == NET)) {
         event_add(&ev_send[i], NULL);
-    else
-    {
-        if (i == NETMITM)
-            bufferevent_enable(mitm_bufferevent[0], EV_WRITE);
-        else
-            bufferevent_enable(mitm_bufferevent[1], EV_WRITE);
+        printf("event_add %u\n", i);
+    }
+    else {
+        mitmsend_wrapper(NULL, &i);
     }
 }
 
@@ -262,6 +277,7 @@ static void recv_wrapper(int f, short event, void *arg)
             struct packet *pbuf_tmp = new_packet(ret);
             if (pbuf_tmp != NULL)
             {
+                printf("recv %u\n", i);
                 memcpy(pbuf_tmp->buf, pbuf_recv[i]->buf, ret);
                 bufferedWrite(i, pbuf_tmp);
             }
@@ -288,6 +304,8 @@ static void send_wrapper(int f, short event, void *arg)
 
         if (ret == pbuf_send[i]->size)
         {
+
+            printf("send %u\n", i);
             free_packet(&pbuf_send[i]);
 
             if (pqueue[i].n)
@@ -343,117 +361,56 @@ static void mitmrecv_wrapper(struct bufferevent *sabe, void *arg)
     const enum mitm_t i = *(enum mitm_t *) arg;
     const int k = (i == NETMITM) ? 0 : 1;
 
-    static uint16_t status[2] = {0};
-    static uint16_t size[2] = {0};
-    static uint16_t missing[2] = {0};
-
-    int ret;
-
-    if (status[k] < 2)
+    if (pbuf_recv[i] == NULL)
     {
-        if (status[k] == 0)
+        uint16_t size;
+
+        size_t ret = bufferevent_read(mitm_bufferevent[k], &size, 2);
+        if (ret < 2)
         {
-            ret = bufferevent_read(mitm_bufferevent[k], &size[k], 2);
-            switch (ret)
-            {
-            case -1:
-                break;
-            case 0:
-                return;
-            case 1:
-                status[k] = 1;
-                break;
-            case 2:
-                status[k] = 2;
-                break;
-            }
+            /* PANIC */
+            exit(1);
         }
 
-        if (status[k] == 1)
-        {
-            ret = bufferevent_read(mitm_bufferevent[k], &size[k] + 1, 1);
-            switch (ret)
-            {
-            case -1:
-                return;
-                break;
-            case 0:
-                return;
-            case 1:
-                status[k] = 2;
-                break;
-            }
-        }
+        printf("recv %u size 2 %u\n", i, ret);
 
-        if (status[k] == 2)
-        {
-            size[k] = ntohs(size[k]);
-            pbuf_recv[i] = new_packet(size[k]);
-            missing[k] = pbuf_recv[i]->size;
-        }
+        size = ntohs(size);
+        pbuf_recv[i] = new_packet(size);
+        bufferevent_setwatermark(mitm_bufferevent[k], EV_READ, size, 0);
+        bufferevent_enable(mitm_bufferevent[k], EV_READ);
     }
-
-    if (status[k] == 2)
+    else
     {
-        ret = bufferevent_read(mitm_bufferevent[k], pbuf_recv[i]->buf + pbuf_recv[i]->size - missing[k], missing[k]);
-        switch (ret)
+        size_t ret = bufferevent_read(mitm_bufferevent[k], pbuf_recv[i]->buf, pbuf_recv[i]->size);
+        if (ret < pbuf_recv[i]->size)
         {
-        case -1:
-            return;
-        default:
-            missing[k] -= ret;
-            break;
+            /* PANIC */
+            exit(1);
         }
 
-        if (!missing[k])
-        {
-            printf("recv\n");
-            bufferedWrite(i, pbuf_recv[i]);
-            pbuf_recv[i] = NULL;
-            status[k] = 0;
-        }
+        printf("recv %u size %u %u\n", k, pbuf_recv[i]->size, ret);
 
-        else printf("missing\n");
-    }
-}
-
-static void mitmsend_wrapper(struct bufferevent *sabe, void *arg)
-{
-    const enum mitm_t i = *(enum mitm_t *) arg;
-    const int k = (i == NETMITM) ? 0 : 1;
-
-    int ret = 0;
-
-    if ((pbuf_send[i] != NULL) || ((pbuf_send[i] = bufferedRead(i)) != NULL))
-    {
-        ret = bufferevent_write(mitm_bufferevent[k], pbuf_send[i]->packed_buf, pbuf_send[i]->packed_size);
-        if (!ret)
-        {
-            free_packet(&pbuf_send[i]);
-
-            if (!pqueue[i].n)
-                bufferevent_disable(mitm_bufferevent[k], EV_WRITE);
-
-        }
+        bufferedWrite(i, pbuf_recv[i]);
+        pbuf_recv[i] = NULL;
+        bufferevent_setwatermark(mitm_bufferevent[k], EV_READ, 2, 0);
+        bufferevent_enable(mitm_bufferevent[k], EV_READ);
     }
 }
 
 static void mitmattach_wrapper(int f, short event, void *arg)
 {
-
     const enum mitm_t i = *(enum mitm_t *) arg;
 
     const int j = (i == NETMITMATTACH) ? NETMITM : TUNMITM;
-    const int k = (i == NETMITMATTACH) ? 0 : 1;
+    const int k = (j == NETMITM) ? 0 : 1;
 
     mitm_attach(i, j);
 
-    mitm_bufferevent[k] = bufferevent_new(fd[j], mitmrecv_wrapper, mitmsend_wrapper, mitm_rs_error, &handler_index[j]);
+    mitm_bufferevent[k] = bufferevent_new(fd[j], mitmrecv_wrapper, NULL, mitm_rs_error, &handler_index[j]);
+    bufferevent_setwatermark(mitm_bufferevent[k], EV_READ, 2, 0);
+    bufferevent_enable(mitm_bufferevent[k], EV_READ | EV_PERSIST);
 
-    //bufferevent_settimeout(mitm_bufferevent[k], 1, 1);
-    //bufferevent_setwatermark(mitm_bufferevent[k], EV_READ | EV_WRITE, 1, 1);
-
-    bufferevent_enable(mitm_bufferevent[k], EV_READ | EV_WRITE);
+    //bufferevent_settimeout(mitm_bufferevent[k], 0, 0);
 }
 
 static uint8_t setupNET(void)
@@ -507,6 +464,7 @@ static uint8_t setupTUN(void)
     const char *tundev = "/dev/net/tun";
 
     struct ifreq tmpifr;
+    struct sockaddr_in *ssa = (struct sockaddr_in *) &tmpifr.ifr_addr;
     int tmpfd;
     int i;
 
@@ -543,13 +501,13 @@ static uint8_t setupTUN(void)
     if (ioctl(tmpfd, SIOCSIFMTU, &tmpifr) == -1)
         runtime_exception("unable to set tun mtu (SIOCSIFMTU)");
 
-    ((struct sockaddr_in *) &tmpifr.ifr_addr)->sin_family = AF_INET;
-    ((struct sockaddr_in *) &tmpifr.ifr_addr)->sin_addr.s_addr = inet_addr(net_ip_str);
+    ssa->sin_family = AF_INET;
+    ssa->sin_addr.s_addr = inet_addr(net_ip_str);
     if (ioctl(tmpfd, SIOCSIFADDR, &tmpifr) == -1)
         runtime_exception("unable to set tun local addr to %s", net_ip_str);
 
-    ((struct sockaddr_in *) &tmpifr.ifr_addr)->sin_family = AF_INET;
-    ((struct sockaddr_in *) &tmpifr.ifr_addr)->sin_addr.s_addr = inet_addr(tun_ip_str);
+    ssa->sin_family = AF_INET;
+    ssa->sin_addr.s_addr = inet_addr(tun_ip_str);
 
     if (ioctl(tmpfd, SIOCSIFDSTADDR, &tmpifr) == -1)
         runtime_exception("unable to set tun point-to-point dest addr to %s", tun_ip_str);
