@@ -62,7 +62,7 @@ static void janus_version(const char *pname)
 
 void handler_termination(int signum)
 {
-    if (signum == SIGINT || signum == SIGSEGV || signum == SIGTERM)
+    if (signum == SIGINT || signum == SIGTERM)
         main_alive = 0;
 
     event_loopbreak();
@@ -78,7 +78,6 @@ static void sigtrapSetup(void(sigtrap_function) (int))
     sigaddset(&sig_nset, SIGINT);
     sigaddset(&sig_nset, SIGABRT);
     sigaddset(&sig_nset, SIGPIPE);
-    //sigaddset(&sig_nset, SIGSEGV);
     sigaddset(&sig_nset, SIGTERM);
     sigaddset(&sig_nset, SIGQUIT);
 
@@ -89,7 +88,6 @@ static void sigtrapSetup(void(sigtrap_function) (int))
     sigaction(SIGINT, &action, NULL);
     sigaction(SIGABRT, &action, NULL);
     sigaction(SIGPIPE, &action, NULL);
-    //sigaction(SIGSEGV, &action, NULL);
     sigaction(SIGTERM, &action, NULL);
     sigaction(SIGQUIT, &action, NULL);
     sigaction(SIGUSR1, &action, NULL);

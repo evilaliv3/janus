@@ -78,6 +78,7 @@ static size_t(*fd_send[4])(const struct packet *);
 static struct packet *pbuf_recv[4] = {NULL};
 static struct packet *pbuf_send[4] = {NULL};
 static struct packet_queue pqueue[4];
+
 struct bufferevent* mitm_bufferevent[2] = {NULL};
 
 static void runtime_exception(const char* format, ...)
@@ -142,19 +143,6 @@ static struct packet* bufferedRead(enum mitm_t i)
     return queue_extract(&pqueue[i]);
 }
 
-static void mitmsend_wrapper(struct bufferevent *sabe, void *arg)
-{
-    const enum mitm_t i = *(enum mitm_t *) arg;
-    const int k = (i == NETMITM) ? 0 : 1;
-
-    if ((pbuf_send[i] != NULL) || ((pbuf_send[i] = bufferedRead(i)) != NULL))
-    {
-        size_t ret = bufferevent_write(mitm_bufferevent[k], pbuf_send[i]->packed_buf, pbuf_send[i]->packed_size);
-        if (!ret)
-            free_packet(&pbuf_send[i]);
-    }
-}
-
 static void bufferedWrite(enum mitm_t i, struct packet * pkt)
 {
     switch (i)
@@ -177,12 +165,16 @@ static void bufferedWrite(enum mitm_t i, struct packet * pkt)
         return;
     }
 
-    queue_insert(&pqueue[i], pkt);
-
     if ((i == TUN) || (i == NET))
+    {
+        queue_insert(&pqueue[i], pkt);
         event_add(&ev_send[i], NULL);
+    }
     else
-        mitmsend_wrapper(NULL, &i);
+    {
+        bufferevent_write(mitm_bufferevent[(i == NETMITM) ? 0 : 1], pkt->packed_buf, pkt->packed_size);
+        free_packet(&pkt);
+    }
 }
 
 static void resetState(uint8_t i)
@@ -191,132 +183,8 @@ static void resetState(uint8_t i)
     free_packet(&pbuf_send[i]);
 }
 
-static void mitm_attach(uint8_t i, uint8_t j)
+static void mitm_rs_error(enum mitm_t i)
 {
-    fd[j] = accept(fd[i], NULL, NULL);
-    if (fd[j] != -1)
-    {
-        setfdflag(fd[j], FD_CLOEXEC);
-        setflflag(fd[j], O_NONBLOCK);
-    }
-    else
-    {
-        if (errno != EAGAIN)
-            event_loopbreak();
-    }
-}
-
-static size_t netif_recv(const struct packet* pkt)
-{
-    struct pcap_pkthdr header;
-    const u_char *packet = pcap_next(capnet, &header);
-
-    if ((packet != NULL) && !memcmp(packet, netif_recv_hdr, ETH_HLEN))
-    {
-        memcpy(pkt->buf, packet + ETH_HLEN, header.len - ETH_HLEN);
-        return header.len - ETH_HLEN;
-    }
-    else
-    {
-        errno = EAGAIN;
-        return -1;
-    }
-}
-
-static size_t netif_send(const struct packet* pkt)
-{
-    size_t macpkt_size = pkt->size + ETH_HLEN;
-    char *macpkt = malloc(macpkt_size);
-    if (macpkt != NULL)
-    {
-        size_t ret = -1;
-        memcpy(macpkt, netif_send_hdr, ETH_HLEN);
-        memcpy(&macpkt[ETH_HLEN], pkt->buf, pkt->size);
-        ret = pcap_inject(capnet, macpkt, macpkt_size);
-        free(macpkt);
-        if (ret == macpkt_size)
-            return ret - ETH_HLEN;
-
-        return -1;
-    }
-
-    errno = EAGAIN;
-    return -1;
-}
-
-static size_t tunif_recv(const struct packet* pkt)
-{
-    return read(fd[TUN], pkt->buf, pkt->size);
-}
-
-static size_t tunif_send(const struct packet* pkt)
-{
-    return write(fd[TUN], pkt->buf, pkt->size);
-}
-
-static void recv_wrapper(int f, short event, void *arg)
-{
-    const enum mitm_t i = *(enum mitm_t *) arg;
-
-    if (pqueue[i == TUN ? NET : TUN].n == PQUEUE_LEN)
-        event_del(&ev_recv[i]);
-
-    if ((pbuf_recv[i] != NULL) || ((pbuf_recv[i] = new_packet(mtu)) != NULL))
-    {
-        const size_t ret = fd_recv[i](pbuf_recv[i]);
-
-        if (ret != -1)
-        {
-            struct packet *pbuf_tmp = new_packet(ret);
-            if (pbuf_tmp != NULL)
-            {
-                memcpy(pbuf_tmp->buf, pbuf_recv[i]->buf, ret);
-                bufferedWrite(i, pbuf_tmp);
-            }
-            return;
-        }
-        else
-        {
-            if (errno != EAGAIN)
-                event_loopbreak();
-        }
-    }
-}
-
-static void send_wrapper(int f, short event, void *arg)
-{
-    const enum mitm_t i = *(enum mitm_t *) arg;
-
-    if (pqueue[i == TUN ? NET : TUN].n < (PQUEUE_LEN))
-        event_add(&ev_recv[i], NULL);
-
-    if (pbuf_send[i] != NULL || ((pbuf_send[i] = bufferedRead(i)) != NULL))
-    {
-        const int ret = fd_send[i](pbuf_send[i]);
-
-        if (ret == pbuf_send[i]->size)
-        {
-            free_packet(&pbuf_send[i]);
-
-            if (pqueue[i].n)
-                event_add(&ev_send[i], NULL);
-
-            return;
-        }
-        else
-        {
-            if ((ret != -1) || (errno != EAGAIN))
-                event_loopbreak();
-            else
-                event_add(&ev_send[i], NULL);
-        }
-    }
-}
-
-static void mitm_rs_error(struct bufferevent *sabe, short what, void *arg)
-{
-    const enum mitm_t i = *(enum mitm_t *) arg;
-
     event_del(&ev_recv[i]);
     event_del(&ev_send[i]);
 
@@ -346,54 +214,182 @@ static void mitm_rs_error(struct bufferevent *sabe, short what, void *arg)
     }
 }
 
-static void mitmrecv_wrapper(struct bufferevent *sabe, void *arg)
+static void mitm_attach(uint8_t i, uint8_t j)
+{
+    fd[j] = accept(fd[i], NULL, NULL);
+    if (fd[j] != -1)
+    {
+        event_del(&ev_recv[(i == NETMITMATTACH) ? NETMITMATTACH : TUNMITMATTACH]);
+        setfdflag(fd[j], FD_CLOEXEC);
+        setflflag(fd[j], O_NONBLOCK);
+    }
+    else
+    {
+        if (errno != EAGAIN)
+            event_loopbreak();
+    }
+}
+
+static size_t netif_recv(const struct packet* pkt)
+{
+    struct pcap_pkthdr header;
+    const u_char *packet = pcap_next(capnet, &header);
+
+    if ((packet != NULL) && !memcmp(packet, netif_recv_hdr, ETH_HLEN))
+    {
+        memcpy(pkt->buf, packet + ETH_HLEN, header.len - ETH_HLEN);
+        return header.len - ETH_HLEN;
+    }
+    else
+    {
+        errno = EAGAIN;
+        return -1;
+    }
+}
+
+static size_t netif_send(const struct packet* pkt)
+{
+    const size_t macpkt_size = pkt->size + ETH_HLEN;
+    char *macpkt = malloc(macpkt_size);
+    if (macpkt != NULL)
+    {
+        size_t ret = -1;
+        memcpy(macpkt, netif_send_hdr, ETH_HLEN);
+        memcpy(&macpkt[ETH_HLEN], pkt->buf, pkt->size);
+        ret = pcap_inject(capnet, macpkt, macpkt_size);
+        free(macpkt);
+        if (ret == macpkt_size)
+            return ret - ETH_HLEN;
+
+        return -1;
+    }
+
+    errno = EAGAIN;
+    return -1;
+}
+
+static size_t tunif_recv(const struct packet* pkt)
+{
+    return read(fd[TUN], pkt->buf, pkt->size);
+}
+
+static size_t tunif_send(const struct packet* pkt)
+{
+    return write(fd[TUN], pkt->buf, pkt->size);
+}
+
+static void recv_cb(int f, short event, void *arg)
 {
     const enum mitm_t i = *(enum mitm_t *) arg;
-    const int k = (i == NETMITM) ? 0 : 1;
+
+    if (pqueue[i == TUN ? NET : TUN].n == PQUEUE_LEN)
+        event_del(&ev_recv[i]);
+
+    if ((pbuf_recv[i] != NULL) || ((pbuf_recv[i] = new_packet(mtu)) != NULL))
+    {
+        const size_t ret = fd_recv[i](pbuf_recv[i]);
+
+        if (ret != -1)
+        {
+            struct packet *pbuf_tmp = new_packet(ret);
+            if (pbuf_tmp != NULL)
+            {
+                memcpy(pbuf_tmp->buf, pbuf_recv[i]->buf, ret);
+                bufferedWrite(i, pbuf_tmp);
+            }
+            return;
+        }
+        else
+        {
+            if (errno != EAGAIN)
+                event_loopbreak();
+        }
+    }
+}
+
+static void send_cb(int f, short event, void *arg)
+{
+    const enum mitm_t i = *(enum mitm_t *) arg;
+
+    if (pqueue[i == TUN ? NET : TUN].n < (PQUEUE_LEN))
+        event_add(&ev_recv[i], NULL);
+
+    if (pbuf_send[i] != NULL || ((pbuf_send[i] = bufferedRead(i)) != NULL))
+    {
+        const int ret = fd_send[i](pbuf_send[i]);
+
+        if (ret == pbuf_send[i]->size)
+        {
+            free_packet(&pbuf_send[i]);
+
+            if (pqueue[i].n)
+                event_add(&ev_send[i], NULL);
+
+            return;
+        }
+        else
+        {
+            if ((ret != -1) || (errno != EAGAIN))
+                event_loopbreak();
+            else
+                event_add(&ev_send[i], NULL);
+        }
+    }
+}
+
+static void mitm_rs_error_cb(struct bufferevent *sabe, short what, void *arg)
+{
+    mitm_rs_error(*(enum mitm_t *) arg);
+}
+
+static void mitmrecv_cb(struct bufferevent *sabe, void *arg)
+{
+    const enum mitm_t i = *(enum mitm_t *) arg;
+    const uint8_t k = (i == NETMITM) ? 0 : 1;
 
     if (pbuf_recv[i] == NULL)
     {
         uint16_t size;
 
-        size_t ret = bufferevent_read(mitm_bufferevent[k], &size, 2);
+        const size_t ret = bufferevent_read(mitm_bufferevent[k], &size, 2);
         if (ret < 2)
         {
-            /* PANIC */
-            exit(1);
+            mitm_rs_error(i);
+            return;
         }
 
         size = ntohs(size);
         pbuf_recv[i] = new_packet(size);
-        bufferevent_setwatermark(mitm_bufferevent[k], EV_READ, size, 0);
+        bufferevent_setwatermark(mitm_bufferevent[k], EV_READ, size, size);
         bufferevent_enable(mitm_bufferevent[k], EV_READ);
     }
     else
     {
-        size_t ret = bufferevent_read(mitm_bufferevent[k], pbuf_recv[i]->buf, pbuf_recv[i]->size);
+        const size_t ret = bufferevent_read(mitm_bufferevent[k], pbuf_recv[i]->buf, pbuf_recv[i]->size);
         if (ret < pbuf_recv[i]->size)
         {
-            /* PANIC */
-            exit(1);
+            mitm_rs_error(i);
+            return;
         }
 
         bufferedWrite(i, pbuf_recv[i]);
         pbuf_recv[i] = NULL;
-        bufferevent_setwatermark(mitm_bufferevent[k], EV_READ, 2, 0);
+        bufferevent_setwatermark(mitm_bufferevent[k], EV_READ, 2, 2);
         bufferevent_enable(mitm_bufferevent[k], EV_READ);
     }
 }
 
-static void mitmattach_wrapper(int f, short event, void *arg)
+static void mitmattach_cb(int f, short event, void *arg)
 {
     const enum mitm_t i = *(enum mitm_t *) arg;
 
     const int j = (i == NETMITMATTACH) ? NETMITM : TUNMITM;
-    const int k = (j == NETMITM) ? 0 : 1;
+    const uint8_t k = (j == NETMITM) ? 0 : 1;
 
     mitm_attach(i, j);
 
-    mitm_bufferevent[k] = bufferevent_new(fd[j], mitmrecv_wrapper, NULL, mitm_rs_error, &handler_index[j]);
-    bufferevent_setwatermark(mitm_bufferevent[k], EV_READ, 2, 0);
+    mitm_bufferevent[k] = bufferevent_new(fd[j], mitmrecv_cb, NULL, mitm_rs_error_cb, &handler_index[j]);
+    bufferevent_setwatermark(mitm_bufferevent[k], EV_READ, 2, 2);
     bufferevent_enable(mitm_bufferevent[k], EV_READ);
 }
 
@@ -586,12 +582,7 @@ uint8_t JANUS_Bootstrap(void)
     for (i = 0; i < 6; ++i)
     {
         if (i < 4)
-        {
-
-            pbuf_recv[i] = NULL;
-            pbuf_send[i] = NULL;
             queue_init(&pqueue[i]);
-        }
 
         handler_index[i] = (enum mitm_t)i;
     }
@@ -635,10 +626,7 @@ uint8_t JANUS_Shutdown(void)
         }
 
         if (fd[i] != -1)
-        {
-
             close(fd[i]);
-        }
     }
 
     execOSCmd(NULL, 0, "route del -net %s netmask %s gw %s dev %s", conf.netip, conf.netmask, tun_ip_str, tun_if_str);
@@ -650,14 +638,14 @@ uint8_t JANUS_Shutdown(void)
 
 void JANUS_EventLoop(void)
 {
-    event_init();
+    struct event_base *ev_base = event_init();
 
-    event_set(&ev_send[NET], fd[NET], EV_WRITE, send_wrapper, &handler_index[NET]);
-    event_set(&ev_send[TUN], fd[TUN], EV_WRITE, send_wrapper, &handler_index[TUN]);
-    event_set(&ev_recv[NET], fd[NET], EV_READ | EV_PERSIST, recv_wrapper, &handler_index[NET]);
-    event_set(&ev_recv[TUN], fd[TUN], EV_READ | EV_PERSIST, recv_wrapper, &handler_index[TUN]);
-    event_set(&ev_recv[NETMITMATTACH], fd[NETMITMATTACH], EV_READ, mitmattach_wrapper, &handler_index[NETMITMATTACH]);
-    event_set(&ev_recv[TUNMITMATTACH], fd[TUNMITMATTACH], EV_READ, mitmattach_wrapper, &handler_index[TUNMITMATTACH]);
+    event_set(&ev_send[NET], fd[NET], EV_WRITE, send_cb, &handler_index[NET]);
+    event_set(&ev_send[TUN], fd[TUN], EV_WRITE, send_cb, &handler_index[TUN]);
+    event_set(&ev_recv[NET], fd[NET], EV_READ | EV_PERSIST, recv_cb, &handler_index[NET]);
+    event_set(&ev_recv[TUN], fd[TUN], EV_READ | EV_PERSIST, recv_cb, &handler_index[TUN]);
+    event_set(&ev_recv[NETMITMATTACH], fd[NETMITMATTACH], EV_READ, mitmattach_cb, &handler_index[NETMITMATTACH]);
+    event_set(&ev_recv[TUNMITMATTACH], fd[TUNMITMATTACH], EV_READ, mitmattach_cb, &handler_index[TUNMITMATTACH]);
 
     event_add(&ev_recv[NET], NULL);
     event_add(&ev_recv[TUN], NULL);
@@ -665,4 +653,6 @@ void JANUS_EventLoop(void)
     event_add(&ev_recv[TUNMITMATTACH], NULL);
 
     event_dispatch();
+
+    event_base_free(ev_base);
 }
