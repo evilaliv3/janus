@@ -151,11 +151,7 @@ static void mitmsend_wrapper(struct bufferevent *sabe, void *arg)
     {
         size_t ret = bufferevent_write(mitm_bufferevent[k], pbuf_send[i]->packed_buf, pbuf_send[i]->packed_size);
         if (!ret)
-        {
-            printf("send %u %u\n", i, pbuf_send[i]->packed_size);
-
             free_packet(&pbuf_send[i]);
-        }
     }
 }
 
@@ -183,13 +179,10 @@ static void bufferedWrite(enum mitm_t i, struct packet * pkt)
 
     queue_insert(&pqueue[i], pkt);
 
-    if ((i == TUN) || (i == NET)) {
+    if ((i == TUN) || (i == NET))
         event_add(&ev_send[i], NULL);
-        printf("event_add %u\n", i);
-    }
-    else {
+    else
         mitmsend_wrapper(NULL, &i);
-    }
 }
 
 static void resetState(uint8_t i)
@@ -277,7 +270,6 @@ static void recv_wrapper(int f, short event, void *arg)
             struct packet *pbuf_tmp = new_packet(ret);
             if (pbuf_tmp != NULL)
             {
-                printf("recv %u\n", i);
                 memcpy(pbuf_tmp->buf, pbuf_recv[i]->buf, ret);
                 bufferedWrite(i, pbuf_tmp);
             }
@@ -304,8 +296,6 @@ static void send_wrapper(int f, short event, void *arg)
 
         if (ret == pbuf_send[i]->size)
         {
-
-            printf("send %u\n", i);
             free_packet(&pbuf_send[i]);
 
             if (pqueue[i].n)
@@ -372,8 +362,6 @@ static void mitmrecv_wrapper(struct bufferevent *sabe, void *arg)
             exit(1);
         }
 
-        printf("recv %u size 2 %u\n", i, ret);
-
         size = ntohs(size);
         pbuf_recv[i] = new_packet(size);
         bufferevent_setwatermark(mitm_bufferevent[k], EV_READ, size, 0);
@@ -387,8 +375,6 @@ static void mitmrecv_wrapper(struct bufferevent *sabe, void *arg)
             /* PANIC */
             exit(1);
         }
-
-        printf("recv %u size %u %u\n", k, pbuf_recv[i]->size, ret);
 
         bufferedWrite(i, pbuf_recv[i]);
         pbuf_recv[i] = NULL;
@@ -408,9 +394,7 @@ static void mitmattach_wrapper(int f, short event, void *arg)
 
     mitm_bufferevent[k] = bufferevent_new(fd[j], mitmrecv_wrapper, NULL, mitm_rs_error, &handler_index[j]);
     bufferevent_setwatermark(mitm_bufferevent[k], EV_READ, 2, 0);
-    bufferevent_enable(mitm_bufferevent[k], EV_READ | EV_PERSIST);
-
-    //bufferevent_settimeout(mitm_bufferevent[k], 0, 0);
+    bufferevent_enable(mitm_bufferevent[k], EV_READ);
 }
 
 static uint8_t setupNET(void)
