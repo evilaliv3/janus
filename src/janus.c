@@ -467,7 +467,7 @@ static uint8_t setupTUN(void)
             runtime_exception("unable to set tun flags (TUNSETIFF)");
     }
 
-    snprintf(tun_if_str, sizeof (tun_if_str), tmpifr.ifr_name);
+    snprintf(tun_if_str, sizeof (tun_if_str), "%s", tmpifr.ifr_name);
     snprintf(tun_ip_str, sizeof (tun_ip_str), "%s%u", CONST_JANUS_FAKEGW_IP, i + 1);
 
     tmpfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
