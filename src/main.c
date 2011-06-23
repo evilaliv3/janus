@@ -212,7 +212,7 @@ int main(int argc, char **argv)
 
     if (!foreground)
     {
-        int i, j;
+        int i, j, k;
 
         printf("Janus is now going in foreground, use SIGTERM to stop it.\n");
 
@@ -226,7 +226,12 @@ int main(int argc, char **argv)
 
         i = open("/dev/null", O_RDWR); /* stdin  */
         j = dup(i); /* stdout */
-        j = dup(i); /* stderr */
+        k = dup(i); /* stderr */
+        if(i != 0 || j != 1 || k != 2)
+        {
+            printf("error while closing stdin, stdout and stderr\n");
+            exit(1);
+        }
     }
 
     sigtrapSetup(handler_termination);
