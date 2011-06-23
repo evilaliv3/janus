@@ -11,6 +11,6 @@ ADD_EXECUTABLE( janus
 INSTALL( TARGETS janus
          RUNTIME DESTINATION /usr/local/sbin )
 
-SET( CMAKE_C_FLAGS "-O3 -Wall -g3 -pedantic ${CMAKE_C_FLAGS}" )
+SET( CMAKE_C_FLAGS "-O3 -Wall -pedantic ${CMAKE_C_FLAGS}" )
 
 TARGET_LINK_LIBRARIES( janus "-levent -lpcap" )
