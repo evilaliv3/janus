@@ -1,6 +1,6 @@
 /*
  *   Janus, a portable, unified and lightweight interface for mitm
- *   applications over the routing table.
+ *   applications over the traffic directed to the default gateway..
  *
  *   Copyright (C) 2011 evilaliv3 <giovanni.pellerano@evilaliv3.org>
  *                      vecna <vecna@delirandom.net>
@@ -61,7 +61,6 @@ char ebuf[PCAP_ERRBUF_SIZE];
 static char net_if_str[CONST_JANUS_BUFSIZE] = {0};
 static char net_ip_str[CONST_JANUS_BUFSIZE] = {0};
 static char tun_if_str[CONST_JANUS_BUFSIZE] = {0};
-static char tun_ip_str[CONST_JANUS_BUFSIZE] = {0};
 static char gw_mac_str[CONST_JANUS_BUFSIZE] = {0};
 static char gw_ip_str[CONST_JANUS_BUFSIZE] = {0};
 
@@ -468,14 +467,13 @@ static uint8_t setupTUN(void)
     }
 
     snprintf(tun_if_str, sizeof (tun_if_str), "%s", tmpifr.ifr_name);
-    snprintf(tun_ip_str, sizeof (tun_ip_str), "%s%u", CONST_JANUS_FAKEGW_IP, i + 1);
 
     tmpfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
 
     if (ioctl(tmpfd, SIOCGIFFLAGS, &tmpifr) == -1)
         runtime_exception("unable to get tun flags (SIOCGIFFLAGS)");
 
-    tmpifr.ifr_flags |= IFF_UP | IFF_RUNNING | IFF_POINTOPOINT;
+    tmpifr.ifr_flags |= IFF_UP | IFF_RUNNING;
     if (ioctl(tmpfd, SIOCSIFFLAGS, &tmpifr) == -1)
         runtime_exception("unable to get tun flags (SIOCSIFFLAGS)");
 
@@ -487,12 +485,6 @@ static uint8_t setupTUN(void)
     ssa->sin_addr.s_addr = inet_addr(net_ip_str);
     if (ioctl(tmpfd, SIOCSIFADDR, &tmpifr) == -1)
         runtime_exception("unable to set tun local addr to %s", net_ip_str);
-
-    ssa->sin_family = AF_INET;
-    ssa->sin_addr.s_addr = inet_addr(tun_ip_str);
-
-    if (ioctl(tmpfd, SIOCSIFDSTADDR, &tmpifr) == -1)
-        runtime_exception("unable to set tun point-to-point dest addr to %s", tun_ip_str);
 
     close(tmpfd);
 
@@ -595,7 +587,7 @@ uint8_t JANUS_Bootstrap(void)
     fd_send[TUN] = tunif_send;
 
     execOSCmd(NULL, 0, "route del -net %s netmask %s gw %s dev %s", conf.netip, conf.netmask, gw_ip_str, net_if_str);
-    execOSCmd(NULL, 0, "route add -net %s netmask %s gw %s dev %s", conf.netip, conf.netmask, tun_ip_str, tun_if_str);
+    execOSCmd(NULL, 0, "route add -net %s netmask %s dev %s", conf.netip, conf.netmask, tun_if_str);
     execOSCmd(NULL, 0, "iptables -A INPUT -m mac --mac-source %s -j DROP", gw_mac_str);
 
     return 0;
@@ -630,7 +622,7 @@ uint8_t JANUS_Shutdown(void)
             close(fd[i]);
     }
 
-    execOSCmd(NULL, 0, "route del -net %s netmask %s gw %s dev %s", conf.netip, conf.netmask, tun_ip_str, tun_if_str);
+    execOSCmd(NULL, 0, "route del -net %s netmask %s dev %s", conf.netip, conf.netmask, tun_if_str);
     execOSCmd(NULL, 0, "route add -net %s netmask %s gw %s dev %s", conf.netip, conf.netmask, gw_ip_str, net_if_str);
     execOSCmd(NULL, 0, "iptables -D INPUT -m mac --mac-source %s -j DROP", gw_mac_str);
 

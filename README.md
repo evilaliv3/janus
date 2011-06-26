@@ -1,4 +1,4 @@
-# Janus is a portable, unified and lightweight interface for mitm applications over the routing table.
+# Janus is a portable, unified and lightweight interface for mitm applications over the traffic directed to the default gateway..
 
 It acts like a deamon and offers two simple stream sockets, one for input and one for the output traffic manipulations.
 Over this sockets, before a packet, it's always appended it's size (16bit), and Janus expects to receive data back with this precise format.
@@ -9,7 +9,7 @@ Janus overrides the actual routing table, creating a fake gateway with the aim t
 
     cmake, gcc, libevent, libpcap, iptables, route, sed
 
-# Below are some examples starting from this common routing table:
+# Below is an exammple of Janus usage starting from this initial routing table:
 
     root@linux# route -n
     Kernel IP routing table
@@ -21,7 +21,7 @@ Janus overrides the actual routing table, creating a fake gateway with the aim t
     0.0.0.0         10.196.136.1    0.0.0.0         UG    0      0        0 eth0
 
 
-#1st Example: Simple immediate exection (by default Janus executes a mitm over the default gateway)
+#Example of Janus usage:
     root@linux# janus
     Janus is now going to background, use SIGTERM to stop it.
 
@@ -34,39 +34,6 @@ Janus overrides the actual routing table, creating a fake gateway with the aim t
     10.196.136.0    0.0.0.0         255.255.255.0   U     0      0        0 eth1
     212.77.1.1      0.0.0.0         255.255.255.255 UH    0      0        0 janus0
     0.0.0.0         212.77.1.1      0.0.0.0         UG    0      0        0 janus0
-
-
-#2nd Example: Custom execution (single janus instance)
-    root@linux# janus --net 94.23.192.28/255.255.255.255
-    Janus is now going to background, use SIGTERM to stop it.
-
-    root@linux# route -n
-    Kernel IP routing table
-    Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
-    94.23.192.28    212.77.1.1      255.255.255.255 UGH   0      0        0 janus0
-    94.228.214.57   10.196.136.1    255.255.255.255 UGH   0      0        0 eth1
-    10.196.135.0    0.0.0.0         255.255.255.0   U     0      0        0 eth0
-    10.196.136.0    0.0.0.0         255.255.255.0   U     0      0        0 eth1
-    212.77.1.1      0.0.0.0         255.255.255.255 UH    0      0        0 janus0
-    0.0.0.0         10.196.135.1    0.0.0.0         UG    0      0        0 eth0
-
-#3rd Example: Custom execution (multiple janus instance, two for example)
-    root@linux# janus --net 94.23.192.28/255.255.255.255 --listen-port-in 4001 --listen-port-out 4002
-    Janus is now going to background, use SIGTERM to stop it.
-
-    root@linux# janus --net 94.228.214.57/255.255.255.255 --listen-port-in 5001 --listen-port-out 5002
-    Janus is now going to background, use SIGTERM to stop it.
-
-    root@linux# route -n
-    Kernel IP routing table
-    Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
-    94.23.192.28    212.77.1.1      255.255.255.255 UGH   0      0        0 janus0
-    94.228.214.57   212.77.1.2      255.255.255.255 UGH   0      0        0 janus1
-    10.196.135.0    0.0.0.0         255.255.255.0   U     0      0        0 eth0
-    10.196.136.0    0.0.0.0         255.255.255.0   U     0      0        0 eth1
-    212.77.1.1      0.0.0.0         255.255.255.255 UH    0      0        0 janus0
-    212.77.1.2      0.0.0.0         255.255.255.255 UH    0      0        0 janus1
-    0.0.0.0         10.196.135.1    0.0.0.0         UG    0      0        0 eth0
 
 ## Client POC
 

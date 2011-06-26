@@ -1,6 +1,6 @@
 /*
  *   Janus, a portable, unified and lightweight interface for mitm
- *   applications over the routing table.
+ *   applications over the traffic directed to the default gateway.
  *
  *   Copyright (C) 2011 evilaliv3 <giovanni.pellerano@evilaliv3.org>
  *                      vecna <vecna@delirandom.net>
@@ -43,13 +43,12 @@ static void janus_help(const char *pname)
 {
 #define JANUS_HELP_FORMAT \
     "Usage: Janus [OPTION]... :\n"\
-    " --net\t\t\t<ip/mask>\tset the gateway object of the mitm\n"\
-    " --listen-ip\t\t<ip>\t\tset the listen ip address\n"\
-    " --listen-port-in\t<port>\t\tset the listen port for incoming traffic\n"\
-    " --listen-port-out\t<port>\t\tset the listen port for outgoing traffic\n"\
-    " --foreground\t\t\t\trun Janus in foreground\n"\
-    " --version\t\t\t\tshow Janus version\n"\
-    " --help\t\t\t\t\tshow this help\n\n"\
+    " --listen-ip\t\t<ip>\tset the listen ip address\n"\
+    " --listen-port-in\t<port>\tset the listen port for incoming traffic\n"\
+    " --listen-port-out\t<port>\tset the listen port for outgoing traffic\n"\
+    " --foreground\t\t\trun Janus in foreground\n"\
+    " --version\t\t\tshow Janus version\n"\
+    " --help\t\t\t\tshow this help\n\n"\
     "http://www.github.com/evilaliv3/janus\n"
 
     printf(JANUS_HELP_FORMAT);
@@ -115,11 +114,8 @@ int main(int argc, char **argv)
 
     int charopt;
     int port;
-    int i;
 
     struct option janus_options[] = {
-        { "net", required_argument, NULL, 'n'},
-        { "listen-port-in", required_argument, NULL, 'i'},
         { "listen-ip", required_argument, NULL, 'l'},
         { "listen-port-in", required_argument, NULL, 'i'},
         { "listen-port-out", required_argument, NULL, 'o'},
@@ -135,28 +131,10 @@ int main(int argc, char **argv)
     conf.listen_port_in = CONST_JANUS_LISTEN_PORT_IN;
     conf.listen_port_out = CONST_JANUS_LISTEN_PORT_OUT;
 
-    while ((charopt = getopt_long(argc, argv, "n:l:i:o:vh", janus_options, NULL)) != -1)
+    while ((charopt = getopt_long(argc, argv, "l:i:o:vh", janus_options, NULL)) != -1)
     {
         switch (charopt)
         {
-        case 'n':
-            if (validate(optarg, REGEXP_NET))
-            {
-                for (i = 0; i < strlen(optarg); i++)
-                {
-                    if (optarg[i] == '/')
-                        break;
-                }
-
-                strncpy(conf.netip, optarg, i);
-                strncpy(conf.netmask, &optarg[i + 1], strlen(optarg) - i);
-            }
-            else
-            {
-                printf("invalid net specified for net param\n");
-                exit(1);
-            }
-            break;
         case 'l':
             if (validate(optarg, REGEXP_HOST))
                 snprintf(conf.listen_ip, sizeof (conf.listen_ip), "%s", optarg);

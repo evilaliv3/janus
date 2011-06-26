@@ -1,6 +1,6 @@
 /*
  *   Janus, a portable, unified and lightweight interface for mitm
- *   applications over the routing table.
+ *   applications over the traffic directed to the default gateway.
  *
  *   Copyright (C) 2011 evilaliv3 <giovanni.pellerano@evilaliv3.org>
  *                      vecna <vecna@delirandom.net>
@@ -24,7 +24,6 @@
 
 #define CONST_JANUS_VERSION         "0.1"
 #define CONST_JANUS_IFNAME          "janus"
-#define CONST_JANUS_FAKEGW_IP       "212.77.1."
 #define CONST_JANUS_NETIP           "0.0.0.0"
 #define CONST_JANUS_NETMASK         "0.0.0.0"
 #define CONST_JANUS_LISTEN_IP       "127.0.0.1"
@@ -34,14 +33,11 @@
 #define PQUEUE_LEN                  1024
 #define REGEXP_IPV4                 "([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})"
 #define REGEXP_HOST                 "^"REGEXP_IPV4"$"
-#define REGEXP_NET                  "^"REGEXP_IPV4"/"REGEXP_IPV4"$"
 
 struct janus_config
 {
     char netip [CONST_JANUS_BUFSIZE];
     char netmask [CONST_JANUS_BUFSIZE];
-    char target_ip [CONST_JANUS_BUFSIZE];
-    char target_mask [CONST_JANUS_BUFSIZE];
     char listen_ip [CONST_JANUS_BUFSIZE];
     uint16_t listen_port_in;
     uint16_t listen_port_out;
