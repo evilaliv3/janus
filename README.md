@@ -1,4 +1,4 @@
-# Janus is a portable, unified and lightweight interface for mitm applications over the traffic directed to the default gateway..
+# Janus is a portable, unified and lightweight interface for mitm applications.
 
 It acts like a deamon and offers two simple stream sockets, one for input and one for the output traffic manipulations.
 Over this sockets, before a packet, it's always appended it's size (16bit), and Janus expects to receive data back with this precise format.
