@@ -125,8 +125,6 @@ int main(int argc, char **argv)
         { NULL, 0, NULL, 0}
     };
 
-    snprintf(conf.netip, sizeof (conf.netip), "%s", CONST_JANUS_NETIP);
-    snprintf(conf.netmask, sizeof (conf.netmask), "%s", CONST_JANUS_NETMASK);
     snprintf(conf.listen_ip, sizeof (conf.listen_ip), "%s", CONST_JANUS_LISTEN_IP);
     conf.listen_port_in = CONST_JANUS_LISTEN_PORT_IN;
     conf.listen_port_out = CONST_JANUS_LISTEN_PORT_OUT;

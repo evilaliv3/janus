@@ -24,8 +24,6 @@
 
 #define CONST_JANUS_VERSION         "0.1"
 #define CONST_JANUS_IFNAME          "janus"
-#define CONST_JANUS_NETIP           "0.0.0.0"
-#define CONST_JANUS_NETMASK         "0.0.0.0"
 #define CONST_JANUS_LISTEN_IP       "127.0.0.1"
 #define CONST_JANUS_LISTEN_PORT_IN  30201
 #define CONST_JANUS_LISTEN_PORT_OUT 10203
@@ -36,8 +34,6 @@
 
 struct janus_config
 {
-    char netip [CONST_JANUS_BUFSIZE];
-    char netmask [CONST_JANUS_BUFSIZE];
     char listen_ip [CONST_JANUS_BUFSIZE];
     uint16_t listen_port_in;
     uint16_t listen_port_out;

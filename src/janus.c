@@ -526,7 +526,7 @@ uint8_t JANUS_Bootstrap(void)
 
     uint8_t i;
 
-    execOSCmd(net_if_str, sizeof (net_if_str), "route -n | sed -n 's/^\\(%s\\).* \\([0-9.]\\{7,15\\}\\) .*\\(%s\\).*UG.* \\(.*\\)$/\\4/p'", conf.netip, conf.netmask);
+    execOSCmd(net_if_str, sizeof (net_if_str), "route -n | sed -n 's/^\\(0.0.0.0\\).* \\([0-9.]\\{7,15\\}\\) .*\\(0.0.0.0\\).*UG.* \\(.*\\)$/\\4/p'");
     if (!strlen(net_if_str))
     {
         runtime_exception("unable to detect default gateway interface");
@@ -544,7 +544,7 @@ uint8_t JANUS_Bootstrap(void)
 
     printf("detected local ip address on interface %s: [%s]\n", net_if_str, net_ip_str);
 
-    execOSCmd(gw_ip_str, sizeof (gw_ip_str), "route -n | sed -n 's/^\\(%s\\).* \\([0-9.]\\{7,15\\}\\) .*\\(%s\\).*UG.* %s$/\\2/p'", conf.netip, conf.netmask, net_if_str);
+    execOSCmd(gw_ip_str, sizeof (gw_ip_str), "route -n | sed -n 's/^\\(0.0.0.0\\).* \\([0-9.]\\{7,15\\}\\) .*\\(0.0.0.0\\).*UG.* %s$/\\2/p'", net_if_str);
     if (!strlen(gw_ip_str))
     {
         runtime_exception("unable to detect default gateway ip address");
@@ -586,8 +586,8 @@ uint8_t JANUS_Bootstrap(void)
     fd_recv[TUN] = tunif_recv;
     fd_send[TUN] = tunif_send;
 
-    execOSCmd(NULL, 0, "route del -net %s netmask %s gw %s dev %s", conf.netip, conf.netmask, gw_ip_str, net_if_str);
-    execOSCmd(NULL, 0, "route add -net %s netmask %s dev %s", conf.netip, conf.netmask, tun_if_str);
+    execOSCmd(NULL, 0, "route del default gw %s dev %s", gw_ip_str, net_if_str);
+    execOSCmd(NULL, 0, "route add default gw %s dev %s", net_ip_str, tun_if_str);
     execOSCmd(NULL, 0, "iptables -A INPUT -m mac --mac-source %s -j DROP", gw_mac_str);
 
     return 0;
@@ -622,8 +622,8 @@ uint8_t JANUS_Shutdown(void)
             close(fd[i]);
     }
 
-    execOSCmd(NULL, 0, "route del -net %s netmask %s dev %s", conf.netip, conf.netmask, tun_if_str);
-    execOSCmd(NULL, 0, "route add -net %s netmask %s gw %s dev %s", conf.netip, conf.netmask, gw_ip_str, net_if_str);
+    execOSCmd(NULL, 0, "route del default gw %s dev %s", net_ip_str, tun_if_str);
+    execOSCmd(NULL, 0, "route add default gw %s dev %s", gw_ip_str, net_if_str);
     execOSCmd(NULL, 0, "iptables -D INPUT -m mac --mac-source %s -j DROP", gw_mac_str);
 
     return 0;
