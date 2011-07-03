@@ -78,15 +78,15 @@ Official Janus page:
 
 # GPG public keys
 
-    X-2:~ X$ gpg --keyserver pgp.mit.edu --recv-key D9A950DE
-    X-2:~ X$ gpg --fingerprint --list-keys D9A950DE
+    $ gpg --keyserver pgp.mit.edu --recv-key D9A950DE
+    $ gpg --fingerprint --list-keys D9A950DE
     pub   1024D/D9A950DE 2009-05-10 [expires: 2014-05-09]
           Key fingerprint = C1ED 5C8F DB6A 1C74 A807  5695 91EC 9BB8 D9A9 50DE
     uid                  Giovanni Pellerano <giovanni.pellerano@evilaliv3.org>
     sub   4096g/50A7F150 2009-05-10 [expires: 2014-05-09]
 
-    X-2:~ X$ gpg --keyserver pgp.mit.edu --recv-key C6765430
-    X-2:~ X$ gpg --fingerprint --list-keys C6765430
+    $ gpg --keyserver pgp.mit.edu --recv-key C6765430
+    $ gpg --fingerprint --list-keys C6765430
     pub   1024D/C6765430 2009-08-25 [expires: 2011-08-25]
           Key fingerprint = 341F 1A8C E2B4 F4F4 174D  7C21 B842 093D C676 5430
     uid                  vecna <vecna@s0ftpj.org>
