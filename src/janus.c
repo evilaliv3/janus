@@ -624,7 +624,7 @@ uint8_t JANUS_Shutdown(void)
 
     execOSCmd(NULL, 0, "route del default gw %s dev %s", net_ip_str, tun_if_str);
     execOSCmd(NULL, 0, "route add default gw %s dev %s", gw_ip_str, net_if_str);
-    execOSCmd(NULL, 0, "iptables -D INPUT -i %s, -m mac --mac-source %s -j DROP", net_if,str, gw_mac_str);
+    execOSCmd(NULL, 0, "iptables -D INPUT -i %s, -m mac --mac-source %s -j DROP", net_if_str, gw_mac_str);
 
     return 0;
 }
