@@ -25,6 +25,7 @@
 #define CONST_JANUS_VERSION         "0.1"
 #define CONST_JANUS_IFNAME          "janus"
 #define CONST_JANUS_LISTEN_IP       "127.0.0.1"
+#define CONST_JANUS_FAKEGW_IP       "212.77.1."
 #define CONST_JANUS_LISTEN_PORT_IN  30201
 #define CONST_JANUS_LISTEN_PORT_OUT 10203
 #define CONST_JANUS_BUFSIZE         4096
