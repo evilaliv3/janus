@@ -1,16 +1,27 @@
-INCLUDE (CheckIncludeFiles)
+ADD_EXECUTABLE(
+    janus
+    packet_queue
+    janus
+    main
+)
 
-CHECK_INCLUDE_FILES(event.h _EVENT_H_)
-CHECK_INCLUDE_FILES(pcap.h lib_pcap_pcap_h)
+SET( PACKAGELIST PCAP EVENT )
 
-ADD_EXECUTABLE( janus
-                packet_queue
-                janus
-                main )
+FOREACH( PACKAGE ${PACKAGELIST} )
 
-INSTALL( TARGETS janus
-         RUNTIME DESTINATION /usr/local/sbin )
+    FIND_PACKAGE( ${PACKAGE} REQUIRED )
+    MESSAGE( "${PACKAGE}: FOUND" )
+    SET( HAVE_LIB${PACKAGE} 1 )
+    INCLUDE_DIRECTORIES( ${${PACKAGE}_INCLUDE_DIRS} )
+    TARGET_LINK_LIBRARIES( janus ${${PACKAGE}_LIBRARY} )
+    MESSAGE( STATUS "${PACKAGE} includes: ${${PACKAGE}_INCLUDE_DIRS}" )
+    MESSAGE( STATUS "${PACKAGE} libs: ${${PACKAGE}_LIBRARIES}" )
+
+ENDFOREACH()
 
 SET( CMAKE_C_FLAGS "-O3 -Wall -pedantic ${CMAKE_C_FLAGS}" )
 
-TARGET_LINK_LIBRARIES( janus "-levent -lpcap" )
+INSTALL(
+    TARGETS janus
+    RUNTIME DESTINATION /usr/local/sbin
+)
