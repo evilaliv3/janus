@@ -477,7 +477,7 @@ static uint8_t setupTUN(void)
 
     tmpifr.ifr_flags |= IFF_UP | IFF_RUNNING | IFF_POINTOPOINT;;
     if (ioctl(tmpfd, SIOCSIFFLAGS, &tmpifr) == -1)
-        runtime_exception("unable to get tun flags (SIOCSIFFLAGS)");
+        runtime_exception("unable to set tun flags (SIOCSIFFLAGS)");
 
     tmpifr.ifr_mtu = mtu;
     if (ioctl(tmpfd, SIOCSIFMTU, &tmpifr) == -1)
@@ -597,6 +597,7 @@ uint8_t JANUS_Bootstrap(void)
     execOSCmd(NULL, 0, "route del default gw %s dev %s", gw_ip_str, net_if_str);
     execOSCmd(NULL, 0, "route add default gw %s dev %s", tun_ip_str, tun_if_str);
     execOSCmd(NULL, 0, "iptables -A INPUT -i %s -m mac --mac-source %s -j DROP", net_if_str, gw_mac_str);
+    execOSCmd(NULL, 0, "iptables -A FORWARD -i %s -m mac --mac-source %s -j DROP", net_if_str, gw_mac_str);
 
     return 0;
 }
@@ -633,6 +634,7 @@ uint8_t JANUS_Shutdown(void)
     execOSCmd(NULL, 0, "route del default gw %s dev %s", tun_ip_str, tun_if_str);
     execOSCmd(NULL, 0, "route add default gw %s dev %s", gw_ip_str, net_if_str);
     execOSCmd(NULL, 0, "iptables -D INPUT -i %s -m mac --mac-source %s -j DROP", net_if_str, gw_mac_str);
+    execOSCmd(NULL, 0, "iptables -D FORWARD -i %s -m mac --mac-source %s -j DROP", net_if_str, gw_mac_str);
 
     return 0;
 }
