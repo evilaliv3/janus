@@ -5,7 +5,7 @@ FIND_PATH(
 )
   
 FIND_LIBRARY(
-    PCAP_LIBRARY
+    EVENT_LIBRARY
     NAMES 
     event
 )

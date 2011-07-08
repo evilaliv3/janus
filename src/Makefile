@@ -151,6 +151,21 @@ janus/fast:
 .PHONY : janus/fast
 
 # target to build an object file
+janus.o:
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/janus.o
+.PHONY : janus.o
+
+# target to preprocess a source file
+janus.i:
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/janus.i
+.PHONY : janus.i
+
+# target to generate assembly for a file
+janus.s:
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/janus.s
+.PHONY : janus.s
+
+# target to build an object file
 main.o:
 	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/main.o
 .PHONY : main.o
@@ -193,6 +208,9 @@ help:
 	@echo "... janus"
 	@echo "... list_install_components"
 	@echo "... rebuild_cache"
+	@echo "... janus.o"
+	@echo "... janus.i"
+	@echo "... janus.s"
 	@echo "... main.o"
 	@echo "... main.i"
 	@echo "... main.s"
