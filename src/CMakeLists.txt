@@ -19,7 +19,7 @@ FOREACH( PACKAGE ${PACKAGELIST} )
 
 ENDFOREACH()
 
-SET( CMAKE_C_FLAGS "-O3 -Wall -pedantic ${CMAKE_C_FLAGS}" )
+SET( CMAKE_C_FLAGS "-g3 -O3 -Wall -pedantic ${CMAKE_C_FLAGS}" )
 
 INSTALL(
     TARGETS janus

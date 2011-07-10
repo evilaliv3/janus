@@ -46,6 +46,7 @@ static void janus_help(const char *pname)
     " --listen-ip\t\t<ip>\tset the listen ip address\n"\
     " --listen-port-in\t<port>\tset the listen port for incoming traffic\n"\
     " --listen-port-out\t<port>\tset the listen port for outgoing traffic\n"\
+    " --pqueue-len\t\t<len>\tset tha internal packet queue length\n"\
     " --foreground\t\t\trun Janus in foreground\n"\
     " --version\t\t\tshow Janus version\n"\
     " --help\t\t\t\tshow this help\n\n"\
@@ -114,11 +115,13 @@ int main(int argc, char **argv)
 
     int charopt;
     int port;
+    int pqueue;
 
     struct option janus_options[] = {
         { "listen-ip", required_argument, NULL, 'l'},
         { "listen-port-in", required_argument, NULL, 'i'},
         { "listen-port-out", required_argument, NULL, 'o'},
+        { "pqueue-len", required_argument, NULL, 'q'},
         { "foreground", no_argument, NULL, 'f'},
         { "version", no_argument, NULL, 'v'},
         { "help", no_argument, NULL, 'h'},
@@ -128,8 +131,9 @@ int main(int argc, char **argv)
     snprintf(conf.listen_ip, sizeof (conf.listen_ip), "%s", CONST_JANUS_LISTEN_IP);
     conf.listen_port_in = CONST_JANUS_LISTEN_PORT_IN;
     conf.listen_port_out = CONST_JANUS_LISTEN_PORT_OUT;
+    conf.pqueue_len = CONST_JANUS_PQUEUE_LEN;
 
-    while ((charopt = getopt_long(argc, argv, "l:i:o:vh", janus_options, NULL)) != -1)
+    while ((charopt = getopt_long(argc, argv, "l:i:o:q:vh", janus_options, NULL)) != -1)
     {
         switch (charopt)
         {
@@ -159,6 +163,16 @@ int main(int argc, char **argv)
             else
             {
                 printf("invalid port specified for listen_port_out param\n");
+                exit(1);
+            }
+            break;
+        case 'q':
+            pqueue = atoi(optarg);
+            if (pqueue >= 0 && pqueue <= 65535)
+                conf.pqueue_len = (uint16_t) pqueue;
+            else
+            {
+                printf("invalid num specified for packet queue len param\n");
                 exit(1);
             }
             break;
@@ -203,7 +217,7 @@ int main(int argc, char **argv)
         i = open("/dev/null", O_RDWR); /* stdin  */
         j = dup(i); /* stdout */
         k = dup(i); /* stderr */
-        if(i != 0 || j != 1 || k != 2)
+        if (i != 0 || j != 1 || k != 2)
         {
             printf("error while closing stdin, stdout and stderr\n");
             exit(1);
@@ -214,14 +228,18 @@ int main(int argc, char **argv)
 
     main_alive = 1;
 
+    JANUS_Bootstrap();
+
     while (main_alive)
     {
-        JANUS_Bootstrap();
+        JANUS_Init();
 
         JANUS_EventLoop();
 
-        JANUS_Shutdown();
+        JANUS_Reset();
     }
+
+    JANUS_Shutdown();
 
     exit(0);
 }

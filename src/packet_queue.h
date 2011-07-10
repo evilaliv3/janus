@@ -24,29 +24,47 @@
 
 #include <stdint.h>
 
+struct packet;
+struct packets;
+struct packet_queue;
+
 struct packet
 {
     struct packet *next;
-
+    char *buf;
     uint16_t size;
-    uint8_t *buf;
-
-    uint16_t packed_size;
-    uint8_t *packed_buf;
 };
 
 struct packet_queue
 {
-    size_t n;
-    struct packet *head;
-    struct packet *tail;
+    struct packets *pkts;
+    uint16_t *records;
+    uint16_t capacity;
+    uint16_t count;
+    uint16_t head;
+    uint16_t tail;
 };
 
-struct packet* new_packet(uint32_t size);
-void free_packet(struct packet** pkt_p);
-void queue_init(struct packet_queue *q);
-void queue_insert(struct packet_queue *q, struct packet *p);
-struct packet* queue_extract(struct packet_queue *q);
-void queue_clear(struct packet_queue *q);
+struct packets
+{
+    struct packet_queue *free_packets;
+    struct packet *pdescriptor;
+    char *pmemory;
+    uint16_t num;
+    uint16_t size;
+};
+
+struct packet_queue* queue_malloc(struct packets *pkts);
+int32_t queue_push_back(struct packet_queue *pq, struct packet *pkt);
+int32_t queue_pop_front(struct packet_queue *pq, struct packet **pkt);
+void queue_reset(struct packet_queue *pq);
+void queue_free(struct packet_queue *pq);
+
+struct packets* pbufs_malloc(uint16_t pkts_num, uint16_t pkts_size);
+void pbufs_reset(struct packets *pkts);
+void pbufs_free(struct packets *pkts);
+
+struct packet* pbuf_acquire(struct packets *pkts);
+void pbuf_release(struct packets *pkts, struct packet *pkt);
 
 #endif /* J_PACKET_QUEUE_H */

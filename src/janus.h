@@ -29,7 +29,7 @@
 #define CONST_JANUS_LISTEN_PORT_IN  30201
 #define CONST_JANUS_LISTEN_PORT_OUT 10203
 #define CONST_JANUS_BUFSIZE         4096
-#define PQUEUE_LEN                  1024
+#define CONST_JANUS_PQUEUE_LEN      32
 #define REGEXP_IPV4                 "([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})"
 #define REGEXP_HOST                 "^"REGEXP_IPV4"$"
 
@@ -38,9 +38,12 @@ struct janus_config
     char listen_ip [CONST_JANUS_BUFSIZE];
     uint16_t listen_port_in;
     uint16_t listen_port_out;
+    uint16_t pqueue_len;
 };
 
 uint8_t JANUS_Bootstrap(void);
+uint8_t JANUS_Init(void);
+uint8_t JANUS_Reset(void);
 uint8_t JANUS_Shutdown(void);
 void JANUS_EventLoop(void);
 

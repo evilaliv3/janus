@@ -19,7 +19,7 @@
  *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include "errno.h"
+#include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
 #include <signal.h>
@@ -55,7 +55,10 @@ enum mitm_t
 
 struct janus_config conf;
 
+struct packets *pkts = NULL;
+
 pcap_t *capnet = NULL;
+char *macpkt = NULL;
 char ebuf[PCAP_ERRBUF_SIZE];
 
 static char net_if_str[CONST_JANUS_BUFSIZE] = {0};
@@ -65,26 +68,28 @@ static char tun_ip_str[CONST_JANUS_BUFSIZE] = {0};
 static char gw_mac_str[CONST_JANUS_BUFSIZE] = {0};
 static char gw_ip_str[CONST_JANUS_BUFSIZE] = {0};
 
+static char net_mtu_str[CONST_JANUS_BUFSIZE] = {0};
+static uint16_t mtu;
+
 static uint8_t netif_recv_hdr[ETH_HLEN] = {0};
 static uint8_t netif_send_hdr[ETH_HLEN] = {0};
-static uint8_t gw_mac[ETH_ALEN] = {0};
 
-static uint16_t mtu;
+static uint8_t gw_mac[ETH_ALEN] = {0};
 
 static int fd[6] = {-1};
 static struct event ev_recv[6];
 static struct event ev_send[6];
 static enum mitm_t handler_index[6];
 
-static size_t(*fd_recv[4])(const struct packet *);
-static size_t(*fd_send[4])(const struct packet *);
+static ssize_t(*fd_recv[4])();
+static ssize_t(*fd_send[4])();
 static struct packet *pbuf_recv[4] = {NULL};
 static struct packet *pbuf_send[4] = {NULL};
-static struct packet_queue pqueue[4];
+static struct packet_queue *pqueue[2] = {NULL};
 
-struct bufferevent* mitm_bufferevent[2] = {NULL};
+static struct bufferevent* mitm_bufferevent[2] = {NULL};
 
-static void runtime_exception(const char* format, ...)
+static void runtime_exception(const char *format, ...)
 {
     char error[CONST_JANUS_BUFSIZE] = {0};
 
@@ -97,7 +102,7 @@ static void runtime_exception(const char* format, ...)
     exit(1);
 }
 
-static void execOSCmd(char* buf, size_t bufsize, const char* format, ...)
+static void execOSCmd(char *buf, size_t bufsize, const char *format, ...)
 {
     char cmd[CONST_JANUS_BUFSIZE] = {0};
     FILE *stream = NULL;
@@ -142,16 +147,16 @@ static void setflflag(int fd, long flags)
         runtime_exception("unable to set fl flags %u on fd %u (F_GETFL/F_SETFL)", fd, flags);
 }
 
-static struct packet* bufferedRead(enum mitm_t i)
+static int32_t bufferedRead(enum mitm_t i)
 {
-    if ((i == TUN || i == NET) && pqueue[i].n == PQUEUE_LEN)
-        event_add(&ev_recv[i], NULL);
-
-    return queue_extract(&pqueue[i]);
+    return queue_pop_front(pqueue[i], &pbuf_send[i]);
 }
 
-static void bufferedWrite(enum mitm_t i, struct packet * pkt)
+static void bufferedWrite(enum mitm_t i)
 {
+    struct packet *pkt = pbuf_recv[i];
+    pbuf_recv[i] = NULL;
+
     switch (i)
     {
     case NET:
@@ -174,55 +179,38 @@ static void bufferedWrite(enum mitm_t i, struct packet * pkt)
 
     if ((i == TUN) || (i == NET))
     {
-        queue_insert(&pqueue[i], pkt);
+        if (pqueue[i]->count == 0)
+            event_add(&ev_send[i], NULL);
 
-        if (pqueue[i].n == PQUEUE_LEN)
-            event_del(&ev_recv[i]);
-
-        event_add(&ev_send[i], NULL);
+        queue_push_back(pqueue[i], pkt);
     }
     else
     {
-        bufferevent_write(mitm_bufferevent[(i == NETMITM) ? 0 : 1], pkt->packed_buf, pkt->packed_size);
-        free_packet(&pkt);
+        uint16_t size = htons(pkt->size);
+        i = (i == NETMITM) ? 0 : 1;
+        bufferevent_write(mitm_bufferevent[i], &size, sizeof (size));
+        bufferevent_write(mitm_bufferevent[i], pkt->buf, pkt->size);
+        pbuf_release(pkts, pkt);
     }
-}
-
-static void resetState(uint8_t i)
-{
-    free_packet(&pbuf_recv[i]);
-    free_packet(&pbuf_send[i]);
 }
 
 static void mitm_rs_error(enum mitm_t i)
 {
+    uint8_t j = (i == NETMITM) ? 0 : 1;
+
     event_del(&ev_recv[i]);
     event_del(&ev_send[i]);
 
     close(fd[i]);
     fd[i] = -1;
-    resetState(i);
-    queue_clear(&pqueue[i]);
 
-    switch (i)
+    if (mitm_bufferevent[j] != NULL)
     {
-    case NETMITM:
-        if (mitm_bufferevent[0] != NULL)
-            bufferevent_free(mitm_bufferevent[0]);
-        mitm_bufferevent[0] = NULL;
-        event_add(&ev_recv[NETMITMATTACH], NULL);
-        break;
-    case TUNMITM:
-        if (mitm_bufferevent[1] != NULL)
-            bufferevent_free(mitm_bufferevent[1]);
-        mitm_bufferevent[1] = NULL;
-        event_add(&ev_recv[TUNMITMATTACH], NULL);
-        break;
-    default:
-        printf("!? [%s:%u]: %u", __func__, __LINE__, i);
-        raise(SIGTERM);
-        break;
+        bufferevent_free(mitm_bufferevent[j]);
+        mitm_bufferevent[j] = NULL;
     }
+
+    event_add(&ev_recv[(i == NETMITM) ? NETMITMATTACH : TUNMITMATTACH], NULL);
 }
 
 static void mitm_attach(uint8_t i, uint8_t j)
@@ -241,14 +229,14 @@ static void mitm_attach(uint8_t i, uint8_t j)
     }
 }
 
-static size_t netif_recv(const struct packet* pkt)
+static ssize_t netif_recv(void)
 {
     struct pcap_pkthdr header;
     const u_char *packet = pcap_next(capnet, &header);
 
     if ((packet != NULL) && !memcmp(packet, netif_recv_hdr, ETH_HLEN))
     {
-        memcpy(pkt->buf, packet + ETH_HLEN, header.len - ETH_HLEN);
+        memcpy(pbuf_recv[NET]->buf, packet + ETH_HLEN, header.len - ETH_HLEN);
         return header.len - ETH_HLEN;
     }
     else
@@ -258,55 +246,38 @@ static size_t netif_recv(const struct packet* pkt)
     }
 }
 
-static size_t netif_send(const struct packet* pkt)
+static ssize_t netif_send(void)
 {
-    const size_t macpkt_size = pkt->size + ETH_HLEN;
-    char *macpkt = malloc(macpkt_size);
-    if (macpkt != NULL)
-    {
-        size_t ret = -1;
-        memcpy(macpkt, netif_send_hdr, ETH_HLEN);
-        memcpy(&macpkt[ETH_HLEN], pkt->buf, pkt->size);
-        ret = pcap_inject(capnet, macpkt, macpkt_size);
-        free(macpkt);
+    memcpy(&macpkt[ETH_HLEN], pbuf_send[NET]->buf, pbuf_send[NET]->size);
 
-        if (ret == macpkt_size)
-            return ret - ETH_HLEN;
-        else
-            return -1;
-    }
-
-    errno = EAGAIN;
-    return -1;
+    if (pcap_inject(capnet, macpkt, ETH_HLEN + pbuf_send[NET]->size) != -1)
+        return pbuf_send[NET]->size;
+    else
+        return -1;
 }
 
-static size_t tunif_recv(const struct packet* pkt)
+static ssize_t tunif_recv(void)
 {
-    return read(fd[TUN], pkt->buf, pkt->size);
+    return read(fd[TUN], pbuf_recv[TUN]->buf, mtu);
 }
 
-static size_t tunif_send(const struct packet* pkt)
+static ssize_t tunif_send(void)
 {
-    return write(fd[TUN], pkt->buf, pkt->size);
+    return write(fd[TUN], pbuf_send[TUN]->buf, pbuf_send[TUN]->size);
 }
 
 static void recv_cb(int f, short event, void *arg)
 {
     const enum mitm_t i = *(enum mitm_t *) arg;
 
-    if ((pbuf_recv[i] != NULL) || ((pbuf_recv[i] = new_packet(mtu)) != NULL))
+    if ((pbuf_recv[i] != NULL) || ((pbuf_recv[i] = pbuf_acquire(pkts)) != NULL))
     {
-        const size_t ret = fd_recv[i](pbuf_recv[i]);
+        ssize_t ret = fd_recv[i]();
 
-        if (ret != -1)
+        if (ret > 0)
         {
-            struct packet *pbuf_tmp = new_packet(ret);
-            if (pbuf_tmp != NULL)
-            {
-                memcpy(pbuf_tmp->buf, pbuf_recv[i]->buf, ret);
-                bufferedWrite(i, pbuf_tmp);
-            }
-            return;
+            pbuf_recv[i]->size = ret;
+            bufferedWrite(i);
         }
         else
         {
@@ -320,23 +291,22 @@ static void send_cb(int f, short event, void *arg)
 {
     const enum mitm_t i = *(enum mitm_t *) arg;
 
-    if (pbuf_send[i] != NULL || ((pbuf_send[i] = bufferedRead(i)) != NULL))
+    if (pbuf_send[i] != NULL || (bufferedRead(i) != -1))
     {
-        const size_t ret = fd_send[i](pbuf_send[i]);
+        const ssize_t ret = fd_send[i]();
 
         if (ret == pbuf_send[i]->size)
         {
-            free_packet(&pbuf_send[i]);
+            pbuf_release(pkts, pbuf_send[i]);
+            pbuf_send[i] = NULL;
 
-            if (pqueue[i].n)
-                event_add(&ev_send[i], NULL);
+            if (pqueue[i]->count == 0)
+                event_del(&ev_send[i]);
         }
         else
         {
-            if ((ret != -1) || (errno != EAGAIN))
+            if (errno != EAGAIN)
                 event_loopbreak();
-            else
-                event_add(&ev_send[i], NULL);
         }
     }
 }
@@ -353,32 +323,31 @@ static void mitmrecv_cb(struct bufferevent *sabe, void *arg)
 
     if (pbuf_recv[i] == NULL)
     {
-        uint16_t size;
+        pbuf_recv[i] = pbuf_acquire(pkts);
+        if (pbuf_recv[i] == NULL)
+            return;
 
-        if (bufferevent_read(mitm_bufferevent[k], &size, 2) < 2)
+        if (bufferevent_read(mitm_bufferevent[k], &pbuf_recv[i]->size, sizeof (uint16_t)) != sizeof (uint16_t))
         {
             mitm_rs_error(i);
             return;
         }
 
-        size = ntohs(size);
-        pbuf_recv[i] = new_packet(size);
-        bufferevent_setwatermark(mitm_bufferevent[k], EV_READ, size, size);
+        pbuf_recv[i]->size = ntohs(pbuf_recv[i]->size);
+        bufferevent_setwatermark(mitm_bufferevent[k], EV_READ, pbuf_recv[i]->size, pbuf_recv[i]->size);
     }
     else
     {
-        if (bufferevent_read(mitm_bufferevent[k], pbuf_recv[i]->buf, pbuf_recv[i]->size) < pbuf_recv[i]->size)
+        if (bufferevent_read(mitm_bufferevent[k], pbuf_recv[i]->buf, pbuf_recv[i]->size) != pbuf_recv[i]->size)
         {
             mitm_rs_error(i);
             return;
         }
 
-        bufferedWrite(i, pbuf_recv[i]);
-        pbuf_recv[i] = NULL;
-        bufferevent_setwatermark(mitm_bufferevent[k], EV_READ, 2, 2);
-    }
+        bufferedWrite(i);
+        bufferevent_setwatermark(mitm_bufferevent[k], EV_READ, sizeof (uint16_t), sizeof (uint16_t));
 
-    bufferevent_enable(mitm_bufferevent[k], EV_READ);
+    }
 }
 
 static void mitmattach_cb(int f, short event, void *arg)
@@ -420,10 +389,7 @@ static uint8_t setupNET(void)
     memcpy(&netif_recv_hdr[ETH_ALEN], gw_mac, ETH_ALEN);
     *(uint16_t *)&netif_recv_hdr[2 * ETH_ALEN] = htons(ETH_P_IP);
 
-    if (ioctl(tmpfd, SIOCGIFMTU, &tmpifr) == -1)
-        runtime_exception("unable to execute ioctl(SIOCGIFMTU) on interface: %s", net_if_str);
-
-    mtu = tmpifr.ifr_mtu;
+    memcpy(macpkt, netif_send_hdr, ETH_HLEN);
 
     close(tmpfd);
 
@@ -475,7 +441,8 @@ static uint8_t setupTUN(void)
     if (ioctl(tmpfd, SIOCGIFFLAGS, &tmpifr) == -1)
         runtime_exception("unable to get tun flags (SIOCGIFFLAGS)");
 
-    tmpifr.ifr_flags |= IFF_UP | IFF_RUNNING | IFF_POINTOPOINT;;
+    tmpifr.ifr_flags |= IFF_UP | IFF_RUNNING | IFF_POINTOPOINT;
+
     if (ioctl(tmpfd, SIOCSIFFLAGS, &tmpifr) == -1)
         runtime_exception("unable to set tun flags (SIOCSIFFLAGS)");
 
@@ -488,8 +455,7 @@ static uint8_t setupTUN(void)
     if (ioctl(tmpfd, SIOCSIFADDR, &tmpifr) == -1)
         runtime_exception("unable to set tun local addr to %s", net_ip_str);
 
-
-    ssa->sin_family = AF_INET; 	
+    ssa->sin_family = AF_INET;
     ssa->sin_addr.s_addr = inet_addr(tun_ip_str);
     if (ioctl(tmpfd, SIOCSIFDSTADDR, &tmpifr) == -1)
         runtime_exception("unable to set tun point-to-point dest addr to %s", tun_ip_str);
@@ -552,6 +518,17 @@ uint8_t JANUS_Bootstrap(void)
 
     printf("detected local ip address on interface %s: [%s]\n", net_if_str, net_ip_str);
 
+    execOSCmd(net_mtu_str, sizeof (gw_ip_str), "ifconfig -a %s | sed -n 's/^.* MTU:\\([0-9]*\\) .*$/\\1/p'", net_if_str);
+    if (!strlen(net_mtu_str))
+    {
+        runtime_exception("unable to detect default gateway mtu");
+        return -1;
+    }
+
+    mtu = atoi(net_mtu_str);
+
+    printf("detected default gateway MTU: [%s]\n", net_mtu_str);
+
     execOSCmd(gw_ip_str, sizeof (gw_ip_str), "route -n | sed -n 's/^\\(0.0.0.0\\).* \\([0-9.]\\{7,15\\}\\) .*\\(0.0.0.0\\).*UG.* %s$/\\2/p'", net_if_str);
     if (!strlen(gw_ip_str))
     {
@@ -574,25 +551,42 @@ uint8_t JANUS_Bootstrap(void)
 
     printf("detected default gateway mac address: [%s]\n", gw_mac_str);
 
+    pkts = pbufs_malloc(conf.pqueue_len, mtu);
+    if (pkts == NULL)
+        runtime_exception("unable to allocate memory for packet buffers");
+
+    for (i = 0; i < 6; ++i)
+    {
+        if (i < 2)
+        {
+            pqueue[i] = queue_malloc(pkts);
+            if (pqueue[i] == NULL)
+                runtime_exception("unable to allocate memory for packet queues");
+        }
+
+        handler_index[i] = (enum mitm_t)i;
+    }
+
+    macpkt = malloc(ETH_HLEN + mtu);
+    if (macpkt == NULL)
+        runtime_exception("unable to allocate memory for the datalink packet buffer");
+
+    fd_recv[NET] = netif_recv;
+    fd_send[NET] = netif_send;
+    fd_recv[TUN] = tunif_recv;
+    fd_send[TUN] = tunif_send;
+
+    return 0;
+}
+
+uint8_t JANUS_Init(void)
+{
     fd[NET] = setupNET();
     fd[TUN] = setupTUN();
     fd[NETMITM] = -1;
     fd[TUNMITM] = -1;
     fd[NETMITMATTACH] = setupMitmAttach(conf.listen_port_in);
     fd[TUNMITMATTACH] = setupMitmAttach(conf.listen_port_out);
-
-    for (i = 0; i < 6; ++i)
-    {
-        if (i < 4)
-            queue_init(&pqueue[i]);
-
-        handler_index[i] = (enum mitm_t)i;
-    }
-
-    fd_recv[NET] = netif_recv;
-    fd_send[NET] = netif_send;
-    fd_recv[TUN] = tunif_recv;
-    fd_send[TUN] = tunif_send;
 
     execOSCmd(NULL, 0, "route del default gw %s dev %s", gw_ip_str, net_if_str);
     execOSCmd(NULL, 0, "route add default gw %s dev %s", tun_ip_str, tun_if_str);
@@ -602,49 +596,12 @@ uint8_t JANUS_Bootstrap(void)
     return 0;
 }
 
-uint8_t JANUS_Shutdown(void)
-{
-    uint8_t i;
-
-    if (capnet != NULL)
-    {
-        pcap_close(capnet);
-        capnet = NULL;
-    }
-
-    for (i = 0; i < 6; ++i)
-    {
-        if (i < 4)
-        {
-            if (i < 2)
-            {
-                if (mitm_bufferevent[i] != NULL)
-                    bufferevent_free(mitm_bufferevent[i]);
-                mitm_bufferevent[i] = NULL;
-            }
-
-            resetState(i);
-            queue_clear(&pqueue[i]);
-        }
-
-        if (fd[i] != -1)
-            close(fd[i]);
-    }
-
-    execOSCmd(NULL, 0, "route del default gw %s dev %s", tun_ip_str, tun_if_str);
-    execOSCmd(NULL, 0, "route add default gw %s dev %s", gw_ip_str, net_if_str);
-    execOSCmd(NULL, 0, "iptables -D INPUT -i %s -m mac --mac-source %s -j DROP", net_if_str, gw_mac_str);
-    execOSCmd(NULL, 0, "iptables -D FORWARD -i %s -m mac --mac-source %s -j DROP", net_if_str, gw_mac_str);
-
-    return 0;
-}
-
 void JANUS_EventLoop(void)
 {
     struct event_base *ev_base = event_init();
 
-    event_set(&ev_send[NET], fd[NET], EV_WRITE, send_cb, &handler_index[NET]);
-    event_set(&ev_send[TUN], fd[TUN], EV_WRITE, send_cb, &handler_index[TUN]);
+    event_set(&ev_send[NET], fd[NET], EV_WRITE | EV_PERSIST, send_cb, &handler_index[NET]);
+    event_set(&ev_send[TUN], fd[TUN], EV_WRITE | EV_PERSIST, send_cb, &handler_index[TUN]);
     event_set(&ev_recv[NET], fd[NET], EV_READ | EV_PERSIST, recv_cb, &handler_index[NET]);
     event_set(&ev_recv[TUN], fd[TUN], EV_READ | EV_PERSIST, recv_cb, &handler_index[TUN]);
     event_set(&ev_recv[NETMITMATTACH], fd[NETMITMATTACH], EV_READ, mitmattach_cb, &handler_index[NETMITMATTACH]);
@@ -658,4 +615,56 @@ void JANUS_EventLoop(void)
     event_dispatch();
 
     event_base_free(ev_base);
+}
+
+uint8_t JANUS_Reset(void)
+{
+    uint8_t i;
+
+    execOSCmd(NULL, 0, "route del default gw %s dev %s", tun_ip_str, tun_if_str);
+    execOSCmd(NULL, 0, "route add default gw %s dev %s", gw_ip_str, net_if_str);
+    execOSCmd(NULL, 0, "iptables -D INPUT -i %s -m mac --mac-source %s -j DROP", net_if_str, gw_mac_str);
+    execOSCmd(NULL, 0, "iptables -D FORWARD -i %s -m mac --mac-source %s -j DROP", net_if_str, gw_mac_str);
+
+    if (capnet != NULL)
+    {
+        pcap_close(capnet);
+        capnet = NULL;
+    }
+
+    for (i = 0; i < 6; ++i)
+    {
+        if (i < 2)
+        {
+            queue_reset(pqueue[i]);
+
+            if (mitm_bufferevent[i] != NULL)
+            {
+                bufferevent_free(mitm_bufferevent[i]);
+                mitm_bufferevent[i] = NULL;
+            }
+        }
+
+        if (fd[i] != -1)
+        {
+            close(fd[i]);
+            fd[i] = -1;
+        }
+    }
+
+    return 0;
+}
+
+uint8_t JANUS_Shutdown(void)
+{
+    uint8_t i;
+
+    free(macpkt);
+
+    for (i = 0; i < 2; ++i)
+        queue_free(pqueue[i]);
+
+    pbufs_free(pkts);
+
+    return 0;
 }

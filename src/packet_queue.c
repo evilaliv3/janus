@@ -23,83 +23,153 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include <arpa/inet.h>
-
 #include "packet_queue.h"
 
-struct packet* new_packet(uint32_t size)
+struct packets* pbufs_malloc(uint16_t pkts_num, uint16_t pkts_size)
 {
-    const uint32_t realsize = (sizeof (struct packet)) + (sizeof (uint16_t)) + size;
+    uint16_t i;
 
-    struct packet * const ret = (struct packet *) malloc(realsize);
+    struct packets *pkts = malloc(sizeof (struct packets));
+    if (pkts == NULL)
+        return NULL;
 
-    if (ret != NULL)
+    pkts->num = pkts_num;
+    pkts->size = pkts_size;
+
+    pkts->pdescriptor = malloc(pkts->num * sizeof(struct packet));
+    if (pkts->pdescriptor == NULL)
     {
-        ret->size = size;
-        ret->buf = (uint8_t *) ret + (sizeof (struct packet)) + (sizeof (uint16_t));
-
-        ret->packed_size = size + (sizeof (uint16_t));
-        ret->packed_buf = (uint8_t *) ret + (sizeof (struct packet));
-        *(uint16_t *) ret->packed_buf = htons(size);
+        free(pkts);
+        return NULL;
     }
 
-    return ret;
-}
-
-void free_packet(struct packet** pkt_p)
-{
-    if (*pkt_p != NULL)
+    pkts->pmemory = malloc(pkts->num * pkts->size);
+    if (pkts->pmemory == NULL)
     {
-        free(*pkt_p);
-        *pkt_p = NULL;
+        free(pkts->pdescriptor);
+        free(pkts);
+        return NULL;
     }
-}
 
-void queue_init(struct packet_queue* q)
-{
-    q->n = 0;
-    q->head = NULL;
-    q->tail = NULL;
-}
+    for (i = 0; i < pkts->num; i++)
+        pkts->pdescriptor[i].buf = &pkts->pmemory[i * pkts->size];
 
-void queue_insert(struct packet_queue *q, struct packet *p)
-{
-    p->next = NULL;
-
-    if (q->n == 0)
+    pkts->free_packets = queue_malloc(pkts);
+    if (pkts->free_packets == NULL)
     {
-        q->head = p;
-        q->tail = p;
+        free(pkts->pdescriptor);
+        free(pkts->pmemory);
+        free(pkts);
+        return NULL;
     }
+
+    pbufs_reset(pkts);
+
+    return pkts;
+}
+
+void pbufs_reset(struct packets* pkts)
+{
+    uint32_t i;
+    for (i = 0; i < pkts->num; i++)
+        queue_push_back(pkts->free_packets, &pkts->pdescriptor[i]);
+}
+
+void pbufs_free(struct packets* pkts)
+{
+    queue_free(pkts->free_packets);
+    free(pkts->pmemory);
+    free(pkts->pdescriptor);
+    free(pkts);
+}
+
+struct packet* pbuf_acquire(struct packets* pkts)
+{
+    struct packet* ret;
+    if (queue_pop_front(pkts->free_packets, &ret) != -1)
+        return ret;
     else
-    {
-
-        q->tail->next = p;
-        q->tail = p;
-    }
-
-    q->n++;
+        return NULL;
 }
 
-struct packet* queue_extract(struct packet_queue *q)
+void pbuf_release(struct packets* pkts, struct packet* pkt)
 {
-    struct packet * const ret = q->head;
-
-    if (ret != NULL)
-    {
-        q->head = q->head->next;
-        q->n--;
-
-        if (q->n == 0)
-            q->tail = NULL;
-    }
-
-    return ret;
+    queue_push_back(pkts->free_packets, pkt);
 }
 
-void queue_clear(struct packet_queue *q)
+struct packet_queue* queue_malloc(struct packets* pkts)
 {
-    struct packet *tmp;
-    while ((tmp = queue_extract(q)) != NULL)
-        free(tmp);
+    struct packet_queue* pq = malloc(sizeof (struct packet_queue));
+    if (pq == NULL)
+        return NULL;
+
+    pq->records = malloc(pkts->num * sizeof (pkts->num));
+    if (pq->records == NULL)
+    {
+        free(pq);
+        return NULL;
+    }
+
+    pq->pkts = pkts;
+
+    queue_reset(pq);
+
+    return pq;
+}
+
+void queue_reset(struct packet_queue *pq)
+{
+    struct packet *pkt;
+
+    pq->count = 0;
+    pq->head = 0;
+    pq->tail = 0;
+
+    while(queue_pop_front(pq, &pkt) != -1)
+        queue_push_back(pq->pkts->free_packets, pkt);
+
+}
+
+int32_t queue_push_back(struct packet_queue *pq, struct packet *pkt)
+{
+    uint16_t pktnum = (pkt - pq->pkts->pdescriptor);
+
+    if (pq->count == pq->pkts->num)
+    {
+        pbuf_release(pq->pkts, pkt);
+        return -1;
+    }
+
+    pq->records[pq->head] = pktnum;
+
+    pq->head = (pq->head + 1) % pq->pkts->num;
+
+    pq->count++;
+
+    return 0;
+}
+
+int32_t queue_pop_front(struct packet_queue *pq, struct packet **pkt)
+{
+    if (pq->count == 0)
+        return -1;
+
+    *pkt = &pq->pkts->pdescriptor[pq->records[pq->tail]];
+
+    pq->tail = (pq->tail + 1) % pq->pkts->num;
+
+    pq->count--;
+
+    return 0;
+}
+
+void queue_free(struct packet_queue *pq)
+{
+    if (pq->records != NULL)
+    {
+        free(pq->records);
+        pq->records = NULL;
+    }
+
+    free(pq);
 }

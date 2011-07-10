@@ -9,7 +9,7 @@ Janus overrides the actual routing table, creating a fake gateway with the aim t
 
     cmake, gcc, libevent, libpcap, iptables, route, sed
 
-# Below is an exammple of Janus usage starting from this initial routing table:
+# Below is an example of Janus usage starting from this initial routing table:
 
     root@linux# route -n
     Kernel IP routing table
@@ -61,6 +61,7 @@ Janus overrides the actual routing table, creating a fake gateway with the aim t
         case gen_tcp:recv(Socket, 0) of
             {ok, Data} ->
                 % potential packet mangling activity
+                io:format("Hello, World!~n"),
                 gen_tcp:send(Socket, Data),
                 echo_loop(Socket);
             {error, _} ->
