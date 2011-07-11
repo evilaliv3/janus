@@ -236,7 +236,9 @@ static ssize_t netif_recv(void)
 
     if ((packet != NULL) && !memcmp(packet, netif_recv_hdr, ETH_HLEN))
     {
-        memcpy(pbuf_recv[NET]->buf, packet + ETH_HLEN, header.len - ETH_HLEN);
+        uint32_t len = header.len - ETH_HLEN;
+        len = (len > mtu) ? mtu : len;
+        memcpy(pbuf_recv[NET]->buf, packet + ETH_HLEN, len);
         return header.len - ETH_HLEN;
     }
     else
@@ -393,7 +395,7 @@ static uint8_t setupNET(void)
 
     close(tmpfd);
 
-    capnet = pcap_open_live(net_if_str, ETH_HLEN + mtu, 0, -1, ebuf);
+    capnet = pcap_open_live(net_if_str, 65535, 0, -1, ebuf);
     if (capnet == NULL)
         runtime_exception("unable to open pcap handle on interface %s", net_if_str);
 
