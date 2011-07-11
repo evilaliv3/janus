@@ -102,36 +102,7 @@ static void runtime_exception(const char *format, ...)
     exit(1);
 }
 
-static void execOSCmd(char *buf, size_t bufsize, const char *format, ...)
-{
-    char cmd[CONST_JANUS_BUFSIZE] = {0};
-    FILE *stream = NULL;
-
-    va_list arguments;
-    va_start(arguments, format);
-    vsnprintf(cmd, sizeof (cmd), format, arguments);
-    va_end(arguments);
-
-    printf("executing cmd: [%s]\n", cmd);
-    memset(buf, 0, bufsize);
-
-    stream = popen(cmd, "r");
-    if (stream != NULL)
-    {
-        if (buf != NULL)
-        {
-            if (fgets(buf, bufsize, stream) != NULL)
-            {
-                const size_t len = strlen(buf);
-
-                if (len && buf[len - 1] == '\n')
-                    buf[len - 1] = '\0';
-            }
-        }
-
-        pclose(stream);
-    }
-}
+#include "os_cmds.c"
 
 static void setfdflag(int fd, long flags)
 {
@@ -502,50 +473,37 @@ uint8_t JANUS_Bootstrap(void)
 
     uint8_t i;
 
-    execOSCmd(net_if_str, sizeof (net_if_str), "route -n | sed -n 's/^\\(0.0.0.0\\).* \\([0-9.]\\{7,15\\}\\) .*\\(0.0.0.0\\).*UG.* \\(.*\\)$/\\4/p'");
+    bindCmds();
+
+    cmd[0](net_if_str, sizeof (net_if_str));
     if (!strlen(net_if_str))
-    {
         runtime_exception("unable to detect default gateway interface");
-        return -1;
-    }
 
     printf("detected default gateway interface: [%s]\n", net_if_str);
 
-    execOSCmd(net_ip_str, sizeof (net_ip_str), "ifconfig %s | sed -n 's/.*inet addr:\\([0-9.]\\+\\) .*$/\\1/p'", net_if_str);
+    cmd[1](net_ip_str, sizeof (net_ip_str));
     if (!strlen(net_ip_str))
-    {
         runtime_exception("unable to detect ", net_if_str, " ip address");
-        return -1;
-    }
 
     printf("detected local ip address on interface %s: [%s]\n", net_if_str, net_ip_str);
 
-    execOSCmd(net_mtu_str, sizeof (gw_ip_str), "ifconfig -a %s | sed -n 's/^.* MTU:\\([0-9]*\\) .*$/\\1/p'", net_if_str);
+    cmd[2](net_mtu_str, sizeof (net_mtu_str));
     if (!strlen(net_mtu_str))
-    {
         runtime_exception("unable to detect default gateway mtu");
-        return -1;
-    }
 
     mtu = atoi(net_mtu_str);
 
     printf("detected default gateway MTU: [%s]\n", net_mtu_str);
 
-    execOSCmd(gw_ip_str, sizeof (gw_ip_str), "route -n | sed -n 's/^\\(0.0.0.0\\).* \\([0-9.]\\{7,15\\}\\) .*\\(0.0.0.0\\).*UG.* %s$/\\2/p'", net_if_str);
+    cmd[3](gw_ip_str, sizeof (gw_ip_str));
     if (!strlen(gw_ip_str))
-    {
         runtime_exception("unable to detect default gateway ip address");
-        return -1;
-    }
 
     printf("detected default gateway ip address: [%s]\n", gw_ip_str);
 
-    execOSCmd(gw_mac_str, sizeof (gw_mac_str), "arp -ni %s %s | sed -n 's/^.*\\([a-f0-9:]\\{17,17\\}\\).*$/\\1/p'", net_if_str, gw_ip_str);
+    cmd[4](gw_mac_str, sizeof (gw_mac_str));
     if (!strlen(gw_mac_str))
-    {
         runtime_exception("unable to detect default gateway mac address");
-        return -1;
-    }
 
     sscanf(gw_mac_str, "%02x:%02x:%02x:%02x:%02x:%02x", &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]);
     for (i = 0; i < ETH_ALEN; ++i)
@@ -583,6 +541,8 @@ uint8_t JANUS_Bootstrap(void)
 
 uint8_t JANUS_Init(void)
 {
+    uint8_t i;
+
     fd[NET] = setupNET();
     fd[TUN] = setupTUN();
     fd[NETMITM] = -1;
@@ -590,11 +550,8 @@ uint8_t JANUS_Init(void)
     fd[NETMITMATTACH] = setupMitmAttach(conf.listen_port_in);
     fd[TUNMITMATTACH] = setupMitmAttach(conf.listen_port_out);
 
-    execOSCmd(NULL, 0, "route del default gw %s dev %s", gw_ip_str, net_if_str);
-    execOSCmd(NULL, 0, "route add default gw %s dev %s", tun_ip_str, tun_if_str);
-    execOSCmd(NULL, 0, "iptables -A INPUT -i %s -m mac --mac-source %s -j DROP", net_if_str, gw_mac_str);
-    execOSCmd(NULL, 0, "iptables -A FORWARD -i %s -m mac --mac-source %s -j DROP", net_if_str, gw_mac_str);
-    execOSCmd(NULL, 0, "iptables -A POSTROUTING -o %s -t nat -j MASQUERADE ", tun_if_str);
+    for (i = 5; i < 11; ++i)
+        cmd[i](NULL, 0);
 
     return 0;
 }
@@ -624,11 +581,8 @@ uint8_t JANUS_Reset(void)
 {
     uint8_t i;
 
-    execOSCmd(NULL, 0, "route del default gw %s dev %s", tun_ip_str, tun_if_str);
-    execOSCmd(NULL, 0, "route add default gw %s dev %s", gw_ip_str, net_if_str);
-    execOSCmd(NULL, 0, "iptables -D INPUT -i %s -m mac --mac-source %s -j DROP", net_if_str, gw_mac_str);
-    execOSCmd(NULL, 0, "iptables -D FORWARD -i %s -m mac --mac-source %s -j DROP", net_if_str, gw_mac_str);
-    execOSCmd(NULL, 0, "iptables -D POSTROUTING -o %s -t nat -j MASQUERADE ", tun_if_str);
+    for (i = 11; i < 15; ++i)
+        cmd[i](NULL, 0);
 
     if (capnet != NULL)
     {
