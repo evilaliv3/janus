@@ -59,7 +59,7 @@ static struct packets *pkts;
 
 struct event_base *ev_base;
 
-static pcap_t *capnet = NULL;
+static pcap_t *capnet;
 static char *macpkt;
 
 static char net_if_str[CONST_JANUS_BUFSIZE];
