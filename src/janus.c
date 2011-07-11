@@ -55,11 +55,11 @@ enum mitm_t
 
 struct janus_config conf;
 
-struct packets *pkts = NULL;
+static struct packets *pkts = NULL;
 
-pcap_t *capnet = NULL;
-char *macpkt = NULL;
-char ebuf[PCAP_ERRBUF_SIZE];
+static pcap_t *capnet = NULL;
+static char *macpkt = NULL;
+static char ebuf[PCAP_ERRBUF_SIZE];
 
 static char net_if_str[CONST_JANUS_BUFSIZE] = {0};
 static char net_ip_str[CONST_JANUS_BUFSIZE] = {0};
