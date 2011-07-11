@@ -28,7 +28,7 @@
 #define CONST_JANUS_FAKEGW_IP       "212.77.1."
 #define CONST_JANUS_LISTEN_PORT_IN  30201
 #define CONST_JANUS_LISTEN_PORT_OUT 10203
-#define CONST_JANUS_BUFSIZE         4096
+#define CONST_JANUS_BUFSIZE         512
 #define CONST_JANUS_PQUEUE_LEN      32
 #define REGEXP_IPV4                 "([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})"
 #define REGEXP_HOST                 "^"REGEXP_IPV4"$"
@@ -41,10 +41,10 @@ struct janus_config
     uint16_t pqueue_len;
 };
 
-uint8_t JANUS_Bootstrap(void);
-uint8_t JANUS_Init(void);
-uint8_t JANUS_Reset(void);
-uint8_t JANUS_Shutdown(void);
+void JANUS_Bootstrap(void);
+void JANUS_Init(void);
+void JANUS_Reset(void);
+void JANUS_Shutdown(void);
 void JANUS_EventLoop(void);
 
 #endif /* JANUS_H */

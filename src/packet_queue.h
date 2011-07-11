@@ -54,17 +54,16 @@ struct packets
     uint16_t size;
 };
 
+struct packets* pbufs_malloc(uint16_t pkts_num, uint16_t pkts_size);
+void pbufs_free(struct packets *pkts);
+
+struct packet* pbuf_acquire(struct packets *pkts);
+void pbuf_release(struct packets *pkts, struct packet *pkt);
+
 struct packet_queue* queue_malloc(struct packets *pkts);
 int32_t queue_push_back(struct packet_queue *pq, struct packet *pkt);
 int32_t queue_pop_front(struct packet_queue *pq, struct packet **pkt);
 void queue_reset(struct packet_queue *pq);
 void queue_free(struct packet_queue *pq);
-
-struct packets* pbufs_malloc(uint16_t pkts_num, uint16_t pkts_size);
-void pbufs_reset(struct packets *pkts);
-void pbufs_free(struct packets *pkts);
-
-struct packet* pbuf_acquire(struct packets *pkts);
-void pbuf_release(struct packets *pkts, struct packet *pkt);
 
 #endif /* J_PACKET_QUEUE_H */
