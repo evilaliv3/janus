@@ -36,13 +36,14 @@ static void execOSCmd(char *buf, size_t bufsize, const char *format, ...)
     va_end(arguments);
 
     printf("executing cmd: [%s]\n", cmd);
-    memset(buf, 0, bufsize);
 
     stream = popen(cmd, "r");
     if (stream != NULL)
     {
         if (buf != NULL)
         {
+            memset(buf, 0, bufsize);
+
             if (fgets(buf, bufsize, stream) != NULL)
             {
                 const size_t len = strlen(buf);
@@ -58,10 +59,11 @@ static void execOSCmd(char *buf, size_t bufsize, const char *format, ...)
 
 static void (*bindCmd(struct cmd_sw cmd[]))(char* buf, size_t bufsize)
 {
+    char test[CONST_JANUS_BUFSIZE];
+
     uint8_t i = 0;
     while (cmd[i].cmd_test != NULL)
     {
-        char test[CONST_JANUS_BUFSIZE];
         execOSCmd(test, sizeof (test), "which %s", cmd[i].cmd_test);
         if (strlen(test))
         {
@@ -69,7 +71,7 @@ static void (*bindCmd(struct cmd_sw cmd[]))(char* buf, size_t bufsize)
             return cmd[i].cmd_ex;
         }
 
-        ++i;
+        i++;
     }
 
     return NULL;
