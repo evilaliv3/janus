@@ -550,7 +550,7 @@ uint8_t JANUS_Init(void)
     fd[NETMITMATTACH] = setupMitmAttach(conf.listen_port_in);
     fd[TUNMITMATTACH] = setupMitmAttach(conf.listen_port_out);
 
-    for (i = 5; i < 11; ++i)
+    for (i = 5; i < 10; ++i)
         cmd[i](NULL, 0);
 
     return 0;
@@ -581,7 +581,7 @@ uint8_t JANUS_Reset(void)
 {
     uint8_t i;
 
-    for (i = 11; i < 15; ++i)
+    for (i = 10; i < 15; ++i)
         cmd[i](NULL, 0);
 
     if (capnet != NULL)
