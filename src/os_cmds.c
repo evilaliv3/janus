@@ -71,7 +71,7 @@ static void (*bindCmd(struct cmd_sw cmd[]))(char* buf, size_t bufsize)
             return cmd[i].cmd_ex;
         }
 
-        i++;
+        ++i;
     }
 
     return NULL;
@@ -261,7 +261,7 @@ static void bindCmds(void)
 {
     uint8_t i;
 
-    for (i = 0; cmd_sw_table[i].sw != NULL; i++)
+    for (i = 0; cmd_sw_table[i].sw != NULL; ++i)
     {
         printf("binding cmd %u to a system command\n", i);
         cmd[i] = bindCmd(cmd_sw_table[i].sw);

@@ -396,7 +396,7 @@ static uint8_t setupTUN(void)
     memset(&tmpifr, 0x00, sizeof (tmpifr));
     tmpifr.ifr_flags = IFF_TUN | IFF_NO_PI;
 
-    for (i = 0; i < 64; i++)
+    for (i = 0; i < 64; ++i)
     {
         snprintf(tmpifr.ifr_name, sizeof (tmpifr.ifr_name), "%s%u", CONST_JANUS_IFNAME, i);
         if (!ioctl(tun, TUNSETIFF, &tmpifr))

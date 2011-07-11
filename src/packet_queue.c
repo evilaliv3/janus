@@ -51,7 +51,7 @@ struct packets* pbufs_malloc(uint16_t pkts_num, uint16_t pkts_size)
         return NULL;
     }
 
-    for (i = 0; i < pkts->num; i++)
+    for (i = 0; i < pkts->num; ++i)
         pkts->pdescriptor[i].buf = &pkts->pmemory[i * pkts->size];
 
     pkts->free_packets = queue_malloc(pkts);
@@ -71,7 +71,7 @@ struct packets* pbufs_malloc(uint16_t pkts_num, uint16_t pkts_size)
 void pbufs_reset(struct packets* pkts)
 {
     uint32_t i;
-    for (i = 0; i < pkts->num; i++)
+    for (i = 0; i < pkts->num; ++i)
         queue_push_back(pkts->free_packets, &pkts->pdescriptor[i]);
 }
 
@@ -144,7 +144,7 @@ int32_t queue_push_back(struct packet_queue *pq, struct packet *pkt)
 
     pq->head = (pq->head + 1) % pq->pkts->num;
 
-    pq->count++;
+    ++pq->count;
 
     return 0;
 }
@@ -158,7 +158,7 @@ int32_t queue_pop_front(struct packet_queue *pq, struct packet **pkt)
 
     pq->tail = (pq->tail + 1) % pq->pkts->num;
 
-    pq->count--;
+    --pq->count;
 
     return 0;
 }
