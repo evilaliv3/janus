@@ -594,6 +594,7 @@ uint8_t JANUS_Init(void)
     execOSCmd(NULL, 0, "route add default gw %s dev %s", tun_ip_str, tun_if_str);
     execOSCmd(NULL, 0, "iptables -A INPUT -i %s -m mac --mac-source %s -j DROP", net_if_str, gw_mac_str);
     execOSCmd(NULL, 0, "iptables -A FORWARD -i %s -m mac --mac-source %s -j DROP", net_if_str, gw_mac_str);
+    execOSCmd(NULL, 0, "iptables -A POSTROUTING -o %s -t nat -j MASQUERADE ", tun_if_str);
 
     return 0;
 }
@@ -627,6 +628,7 @@ uint8_t JANUS_Reset(void)
     execOSCmd(NULL, 0, "route add default gw %s dev %s", gw_ip_str, net_if_str);
     execOSCmd(NULL, 0, "iptables -D INPUT -i %s -m mac --mac-source %s -j DROP", net_if_str, gw_mac_str);
     execOSCmd(NULL, 0, "iptables -D FORWARD -i %s -m mac --mac-source %s -j DROP", net_if_str, gw_mac_str);
+    execOSCmd(NULL, 0, "iptables -D POSTROUTING -o %s -t nat -j MASQUERADE ", tun_if_str);
 
     if (capnet != NULL)
     {
