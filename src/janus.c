@@ -43,21 +43,19 @@
 #include "janus.h"
 #include "packet_queue.h"
 
+#define NET 0
+#define TUN 1
+
 enum mitm_t
 {
-    NET = 0,
-    TUN = 1,
-    NETMITM = 2,
-    TUNMITM = 3,
-    NETMITMATTACH = 4,
-    TUNMITMATTACH = 5
+    FDIF = 0,
+    FDMITM = 1,
+    FDMITMATTACH = 2
 };
 
 struct janus_config conf;
 
 static struct packets *pkts;
-
-struct event_base *ev_base;
 
 static pcap_t *capnet;
 static char *macpkt;
@@ -76,16 +74,22 @@ static uint8_t gw_mac[ETH_ALEN];
 static uint8_t netif_recv_hdr[ETH_HLEN];
 static uint8_t netif_send_hdr[ETH_HLEN];
 
-static int fd[6]; /* ALL */
-static struct event ev_recv[6]; /* ALL */
-static struct event ev_send[6]; /* ALL */
-static enum mitm_t handler_index[6]; /* ALL */
-static ssize_t(*fd_recv[2])(); /* NET | TUN */
-static ssize_t(*fd_send[2])(); /* NET | TUN */
-static struct packet *pbuf_recv[4]; /* NET | TUN | NETMITM | TUNMITM */
-static struct packet *pbuf_send[2]; /* NET | TUN */
-static struct packet_queue *pqueue[2]; /* NET | TUN */
-static struct bufferevent* mitm_bufferevent[2]; /* NETMITM | TUNMITM */
+struct mitm_descriptor
+{
+    int fd[3]; /* FDIF | FDMITM | FDMITMATTACH */
+    struct event ev_recv[3]; /* FDIF | FDMITM | FDMITMATTACH */
+    struct event ev_send; /* FDIF */
+    ssize_t(*fd_recv)(); /* FDIF */
+    ssize_t(*fd_send)(); /* FDIF */
+    struct packet * pbuf_recv[2]; /* FDIF | FDMITM */
+    struct packet* pbuf_send; /* FDIF */
+    struct packet_queue * pqueue; /* FDIF */
+    struct bufferevent * mitm_bufferevent; /* FDMITM */
+
+    struct mitm_descriptor *target;
+};
+
+static struct mitm_descriptor mitm_desc[2];
 
 static void runtime_exception(const char *format, ...)
 {
@@ -116,66 +120,28 @@ static void setflflag(int fd, long flags)
         runtime_exception("unable to set fl flags %u on fd %u (F_GETFL/F_SETFL)", fd, flags);
 }
 
-static int32_t bufferedRead(enum mitm_t i)
+static struct packet* bufferedRead(struct mitm_descriptor* desc)
 {
-    return queue_pop_front(pqueue[i], &pbuf_send[i]);
+    return queue_pop_front(desc->pqueue, &desc->pbuf_send);
 }
 
-static void bufferedWrite(enum mitm_t i)
+static void bufferedWrite(struct mitm_descriptor* desc, enum mitm_t i, struct packet *pkt)
 {
-    struct packet *pkt = pbuf_recv[i];
-    pbuf_recv[i] = NULL;
+    struct mitm_descriptor *target = desc->target;
 
-    switch (i)
-    {
-    case NET:
-        i = (fd[NETMITM] == -1) ? TUN : NETMITM;
-        break;
-    case TUN:
-        i = (fd[TUNMITM] == -1) ? NET : TUNMITM;
-        break;
-    case NETMITM:
-        i = TUN;
-        break;
-    case TUNMITM:
-        i = NET;
-        break;
-    default:
-        printf("!? [%s:%u]: %u", __func__, __LINE__, i);
-        raise(SIGTERM);
-        return;
-    }
-
-    if (i < 2) /* NET | TUN*/
-    {
-        if (pqueue[i]->count == 0)
-            event_add(&ev_send[i], NULL);
-
-        queue_push_back(pqueue[i], pkt);
-    }
-    else
+    if ((i == FDIF) && (desc->fd[FDMITM] != -1))
     {
         uint16_t size = htons(pkt->size);
-        i = (i == NETMITM) ? 0 : 1;
-        bufferevent_write(mitm_bufferevent[i], &size, sizeof (size));
-        bufferevent_write(mitm_bufferevent[i], pkt->buf, pkt->size);
+        bufferevent_write(desc->mitm_bufferevent, &size, sizeof (size));
+        bufferevent_write(desc->mitm_bufferevent, pkt->buf, pkt->size);
         pbuf_release(pkts, pkt);
-    }
-}
-
-static void mitm_attach(uint8_t i, uint8_t j)
-{
-    fd[j] = accept(fd[i], NULL, NULL);
-    if (fd[j] != -1)
-    {
-        event_del(&ev_recv[i]);
-        setfdflag(fd[j], FD_CLOEXEC);
-        setflflag(fd[j], O_NONBLOCK);
     }
     else
     {
-        if (errno != EAGAIN)
-            event_loopbreak();
+        if (target->pqueue->count == 0)
+            event_add(&target->ev_send, NULL);
+
+        queue_push_back(target->pqueue, pkt);
     }
 }
 
@@ -188,7 +154,7 @@ static ssize_t netif_recv(void)
     {
         uint32_t len = header.len - ETH_HLEN;
         len = (len > mtu) ? mtu : len;
-        memcpy(pbuf_recv[NET]->buf, packet + ETH_HLEN, len);
+        memcpy(mitm_desc[NET].pbuf_recv[FDIF]->buf, packet + ETH_HLEN, len);
         return header.len - ETH_HLEN;
     }
 
@@ -198,36 +164,41 @@ static ssize_t netif_recv(void)
 
 static ssize_t netif_send(void)
 {
-    memcpy(&macpkt[ETH_HLEN], pbuf_send[NET]->buf, pbuf_send[NET]->size);
+    struct packet *pbuf = mitm_desc[NET].pbuf_send;
 
-    if (pcap_inject(capnet, macpkt, ETH_HLEN + pbuf_send[NET]->size) != -1)
-        return pbuf_send[NET]->size;
+    memcpy(&macpkt[ETH_HLEN], pbuf->buf, pbuf->size);
+
+    if (pcap_inject(capnet, macpkt, ETH_HLEN + pbuf->size) != -1)
+        return pbuf->size;
     else
         return -1;
 }
 
 static ssize_t tunif_recv(void)
 {
-    return read(fd[TUN], pbuf_recv[TUN]->buf, mtu);
+    return read(mitm_desc[TUN].fd[FDIF], mitm_desc[TUN].pbuf_recv[FDIF]->buf, mtu);
 }
 
 static ssize_t tunif_send(void)
 {
-    return write(fd[TUN], pbuf_send[TUN]->buf, pbuf_send[TUN]->size);
+    return write(mitm_desc[TUN].fd[FDIF], mitm_desc[TUN].pbuf_send->buf, mitm_desc[TUN].pbuf_send->size);
 }
 
 static void recv_cb(int f, short event, void *arg)
 {
-    const enum mitm_t i = *(enum mitm_t *) arg;
+    struct mitm_descriptor* desc = arg;
 
-    if ((pbuf_recv[i] != NULL) || ((pbuf_recv[i] = pbuf_acquire(pkts)) != NULL))
+    struct packet **pbuf = &desc->pbuf_recv[FDIF];
+
+    if ((*pbuf != NULL) || ((*pbuf = pbuf_acquire(pkts)) != NULL))
     {
-        ssize_t ret = fd_recv[i]();
+        ssize_t ret = desc->fd_recv();
 
         if (ret > 0)
         {
-            pbuf_recv[i]->size = ret;
-            bufferedWrite(i);
+            (*pbuf)->size = ret;
+            bufferedWrite(desc, FDIF, *pbuf);
+            *pbuf = NULL;
         }
         else
         {
@@ -239,19 +210,21 @@ static void recv_cb(int f, short event, void *arg)
 
 static void send_cb(int f, short event, void *arg)
 {
-    const enum mitm_t i = *(enum mitm_t *) arg;
+    struct mitm_descriptor* desc = arg;
 
-    if (pbuf_send[i] != NULL || (bufferedRead(i) != -1))
+    struct packet **pbuf = &desc->pbuf_send;
+
+    if (*pbuf != NULL || ((*pbuf = bufferedRead(desc)) != NULL))
     {
-        const ssize_t ret = fd_send[i]();
+        const ssize_t ret = desc->fd_send();
 
-        if (ret == pbuf_send[i]->size)
+        if (ret == (*pbuf)->size)
         {
-            pbuf_release(pkts, pbuf_send[i]);
-            pbuf_send[i] = NULL;
+            pbuf_release(pkts, *pbuf);
+            *pbuf = NULL;
 
-            if (pqueue[i]->count == 0)
-                event_del(&ev_send[i]);
+            if (desc->pqueue->count == 0)
+                event_del(&desc->ev_send);
         }
         else
         {
@@ -261,73 +234,78 @@ static void send_cb(int f, short event, void *arg)
     }
 }
 
-static void mitm_rs_error(enum mitm_t i)
+static void mitm_rs_error(struct mitm_descriptor* desc)
 {
-    uint8_t j = (i == NETMITM) ? 0 : 1;
+    close(desc->fd[FDMITM]);
+    desc->fd[FDMITM] = -1;
 
-    event_del(&ev_recv[i]);
-    event_del(&ev_send[i]);
+    bufferevent_free(desc->mitm_bufferevent);
+    desc->mitm_bufferevent = NULL;
 
-    close(fd[i]);
-    fd[i] = -1;
-
-    bufferevent_free(mitm_bufferevent[j]);
-    mitm_bufferevent[j] = NULL;
-
-    event_add(&ev_recv[(i == NETMITM) ? NETMITMATTACH : TUNMITMATTACH], NULL);
+    event_add(&desc->ev_recv[FDMITMATTACH], NULL);
 }
 
 static void mitmrecv_cb(struct bufferevent *sabe, void *arg)
 {
-    const enum mitm_t i = *(enum mitm_t *) arg;
-    const uint8_t k = (i == NETMITM) ? 0 : 1;
+    struct mitm_descriptor* desc = arg;
 
-    if (pbuf_recv[i] == NULL)
+    struct packet **pbuf = &desc->pbuf_recv[FDMITM];
+
+    if (*pbuf == NULL)
     {
-        pbuf_recv[i] = pbuf_acquire(pkts);
-        if (pbuf_recv[i] == NULL)
+        *pbuf = pbuf_acquire(pkts);
+        if (*pbuf == NULL)
             return;
 
-        if (bufferevent_read(mitm_bufferevent[k], &pbuf_recv[i]->size, sizeof (uint16_t)) != sizeof (uint16_t))
+        if (bufferevent_read(desc->mitm_bufferevent, &(*pbuf)->size, sizeof (uint16_t)) != sizeof (uint16_t))
         {
-            mitm_rs_error(i);
+            mitm_rs_error(desc);
             return;
         }
 
-        pbuf_recv[i]->size = ntohs(pbuf_recv[i]->size);
-        bufferevent_setwatermark(mitm_bufferevent[k], EV_READ, pbuf_recv[i]->size, pbuf_recv[i]->size);
+        (*pbuf)->size = ntohs((*pbuf)->size);
+        bufferevent_setwatermark(desc->mitm_bufferevent, EV_READ, (*pbuf)->size, (*pbuf)->size);
     }
     else
     {
-        if (bufferevent_read(mitm_bufferevent[k], pbuf_recv[i]->buf, pbuf_recv[i]->size) != pbuf_recv[i]->size)
+        if (bufferevent_read(desc->mitm_bufferevent, (*pbuf)->buf, (*pbuf)->size) != (*pbuf)->size)
         {
-            mitm_rs_error(i);
+            mitm_rs_error(desc);
             return;
         }
 
-        bufferedWrite(i);
-        bufferevent_setwatermark(mitm_bufferevent[k], EV_READ, sizeof (uint16_t), sizeof (uint16_t));
+        bufferedWrite(desc, FDMITM, *pbuf);
+        *pbuf = NULL;
+        bufferevent_setwatermark(desc->mitm_bufferevent, EV_READ, sizeof (uint16_t), sizeof (uint16_t));
 
     }
 }
 
 static void mitm_rs_error_cb(struct bufferevent *sabe, short what, void *arg)
 {
-    mitm_rs_error(*(enum mitm_t *) arg);
+    mitm_rs_error(arg);
 }
 
 static void mitmattach_cb(int f, short event, void *arg)
 {
-    const enum mitm_t i = *(enum mitm_t *) arg;
+    struct mitm_descriptor* desc = arg;
 
-    const enum mitm_t j = (i == NETMITMATTACH) ? NETMITM : TUNMITM;
-    const uint8_t k = (j == NETMITM) ? 0 : 1;
+    desc->fd[FDMITM] = accept(desc->fd[FDMITMATTACH], NULL, NULL);
+    if (desc->fd[FDMITM] != -1)
+    {
+        event_del(&desc->ev_recv[FDMITMATTACH]);
+        setfdflag(desc->fd[FDMITM], FD_CLOEXEC);
+        setflflag(desc->fd[FDMITM], O_NONBLOCK);
+    }
+    else
+    {
+        if (errno != EAGAIN)
+            event_loopbreak();
+    }
 
-    mitm_attach(i, j);
-
-    mitm_bufferevent[k] = bufferevent_new(fd[j], mitmrecv_cb, NULL, mitm_rs_error_cb, &handler_index[j]);
-    bufferevent_setwatermark(mitm_bufferevent[k], EV_READ, 2, 2);
-    bufferevent_enable(mitm_bufferevent[k], EV_READ);
+    desc->mitm_bufferevent = bufferevent_new(desc->fd[FDMITM], mitmrecv_cb, NULL, mitm_rs_error_cb, desc);
+    bufferevent_setwatermark(desc->mitm_bufferevent, EV_READ, 2, 2);
+    bufferevent_enable(desc->mitm_bufferevent, EV_READ);
 }
 
 static uint8_t setupNET(void)
@@ -466,7 +444,7 @@ void JANUS_Bootstrap(void)
 {
     unsigned int mac[ETH_ALEN];
 
-    uint8_t i;
+    uint8_t i, j;
 
     bindCmds();
 
@@ -506,12 +484,10 @@ void JANUS_Bootstrap(void)
 
     printf("detected default gateway mac address: [%s]\n", gw_mac_str);
 
-    fd_recv[NET] = netif_recv;
-    fd_send[NET] = netif_send;
-    fd_recv[TUN] = tunif_recv;
-    fd_send[TUN] = tunif_send;
-
-    ev_base = event_init();
+    mitm_desc[NET].fd_recv = netif_recv;
+    mitm_desc[NET].fd_send = netif_send;
+    mitm_desc[TUN].fd_recv = tunif_recv;
+    mitm_desc[TUN].fd_send = tunif_send;
 
     capnet = NULL;
 
@@ -523,28 +499,22 @@ void JANUS_Bootstrap(void)
     if (pkts == NULL)
         runtime_exception("unable to allocate memory for packet buffers");
 
-    for (i = 0; i < 6; ++i)
+    for (i = 0; i < 2; ++i)
     {
-        if (i < 4)
+        mitm_desc[i].pqueue = queue_malloc(pkts);
+        if (mitm_desc[i].pqueue == NULL)
+            runtime_exception("unable to allocate memory for packet queues");
+
+        mitm_desc[i].pbuf_send = NULL;
+        mitm_desc[i].mitm_bufferevent = NULL;
+
+        for (j = 0; j < 3; ++j)
         {
-            if (i < 2)
-            {
-                pqueue[i] = queue_malloc(pkts);
-                if (pqueue[i] == NULL)
-                    runtime_exception("unable to allocate memory for packet queues");
+            if (j < 2)
+                mitm_desc[i].pbuf_recv[j] = NULL;
 
-                pbuf_recv[i] = NULL;
-                pbuf_send[i] = NULL;
-
-                mitm_bufferevent[i] = NULL;
-            }
-
-            pbuf_recv[i] = NULL;
+            mitm_desc[i].fd[j] = -1;
         }
-
-        fd[i] = -1;
-
-        handler_index[i] = (enum mitm_t)i;
     }
 }
 
@@ -552,12 +522,13 @@ void JANUS_Init(void)
 {
     uint8_t i;
 
-    fd[NET] = setupNET();
-    fd[TUN] = setupTUN();
-    fd[NETMITM] = -1;
-    fd[TUNMITM] = -1;
-    fd[NETMITMATTACH] = setupMitmAttach(conf.listen_port_in);
-    fd[TUNMITMATTACH] = setupMitmAttach(conf.listen_port_out);
+    mitm_desc[NET].fd[FDIF] = setupNET();
+    mitm_desc[NET].fd[FDMITMATTACH] = setupMitmAttach(conf.listen_port_in);
+    mitm_desc[NET].target = &mitm_desc[TUN];
+
+    mitm_desc[TUN].fd[FDIF] = setupTUN();
+    mitm_desc[TUN].fd[FDMITMATTACH] = setupMitmAttach(conf.listen_port_out);
+    mitm_desc[TUN].target = &mitm_desc[NET];
 
     for (i = 5; i < 10; ++i)
         cmd[i](NULL, 0);
@@ -565,24 +536,28 @@ void JANUS_Init(void)
 
 void JANUS_EventLoop(void)
 {
-    event_set(&ev_send[NET], fd[NET], EV_WRITE | EV_PERSIST, send_cb, &handler_index[NET]);
-    event_set(&ev_send[TUN], fd[TUN], EV_WRITE | EV_PERSIST, send_cb, &handler_index[TUN]);
-    event_set(&ev_recv[NET], fd[NET], EV_READ | EV_PERSIST, recv_cb, &handler_index[NET]);
-    event_set(&ev_recv[TUN], fd[TUN], EV_READ | EV_PERSIST, recv_cb, &handler_index[TUN]);
-    event_set(&ev_recv[NETMITMATTACH], fd[NETMITMATTACH], EV_READ, mitmattach_cb, &handler_index[NETMITMATTACH]);
-    event_set(&ev_recv[TUNMITMATTACH], fd[TUNMITMATTACH], EV_READ, mitmattach_cb, &handler_index[TUNMITMATTACH]);
+    uint8_t i;
 
-    event_add(&ev_recv[NET], NULL);
-    event_add(&ev_recv[TUN], NULL);
-    event_add(&ev_recv[NETMITMATTACH], NULL);
-    event_add(&ev_recv[TUNMITMATTACH], NULL);
+    struct event_base *ev_base = event_init();
+
+    for (i = 0; i < 2; i++)
+    {
+        event_set(&mitm_desc[i].ev_send, mitm_desc[i].fd[FDIF], EV_WRITE | EV_PERSIST, send_cb, &mitm_desc[i]);
+        event_set(&mitm_desc[i].ev_recv[FDIF], mitm_desc[i].fd[FDIF], EV_READ | EV_PERSIST, recv_cb, &mitm_desc[i]);
+        event_set(&mitm_desc[i].ev_recv[FDMITMATTACH], mitm_desc[i].fd[FDMITMATTACH], EV_READ, mitmattach_cb, &mitm_desc[i]);
+
+        event_add(&mitm_desc[i].ev_recv[FDIF], NULL);
+        event_add(&mitm_desc[i].ev_recv[FDMITMATTACH], NULL);
+    }
 
     event_dispatch();
+
+    event_base_free(ev_base);
 }
 
 void JANUS_Reset(void)
 {
-    uint8_t i;
+    uint8_t i, j;
 
     for (i = 10; i < 15; ++i)
         cmd[i](NULL, 0);
@@ -593,34 +568,30 @@ void JANUS_Reset(void)
         capnet = NULL;
     }
 
-    for (i = 0; i < 6; ++i)
+    for (i = 0; i < 2; ++i)
     {
-        if (i < 4)
+        queue_reset(mitm_desc[i].pqueue);
+
+        mitm_desc[i].pbuf_send = NULL;
+
+        if (mitm_desc[i].mitm_bufferevent != NULL)
         {
-            if (i < 2)
-            {
-                pbuf_send[i] = NULL;
-
-                queue_reset(pqueue[i]);
-
-                if (mitm_bufferevent[i] != NULL)
-                {
-                    bufferevent_free(mitm_bufferevent[i]);
-                    mitm_bufferevent[i] = NULL;
-                }
-            }
-
-            pbuf_recv[i] = NULL;
+            bufferevent_free(mitm_desc[i].mitm_bufferevent);
+            mitm_desc[i].mitm_bufferevent = NULL;
         }
 
-        if (fd[i] != -1)
+        for (j = 0; j < 3; ++j)
         {
-            close(fd[i]);
-            fd[i] = -1;
+            if (j < 2)
+                mitm_desc[i].pbuf_recv[j] = NULL;
+
+            if (mitm_desc[i].fd[j] != -1)
+            {
+                close(mitm_desc[i].fd[j]);
+                mitm_desc[i].fd[j] = -1;
+            }
         }
     }
-
-    event_base_free(ev_base);
 }
 
 void JANUS_Shutdown(void)
@@ -628,7 +599,7 @@ void JANUS_Shutdown(void)
     uint8_t i;
 
     for (i = 0; i < 2; ++i)
-        queue_free(pqueue[i]);
+        queue_free(mitm_desc[i].pqueue);
 
     pbufs_free(pkts);
 
