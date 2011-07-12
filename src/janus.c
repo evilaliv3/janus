@@ -536,9 +536,9 @@ void JANUS_Init(void)
 
 void JANUS_EventLoop(void)
 {
-    uint8_t i;
-
     struct event_base *ev_base = event_init();
+
+    uint8_t i;
 
     for (i = 0; i < 2; i++)
     {
