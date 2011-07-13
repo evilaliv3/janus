@@ -259,7 +259,14 @@ static void (*cmd[15])(char* buf, size_t bufsize);
 
 static void bindCmds(void)
 {
+    char test[CONST_JANUS_BUFSIZE] = {0};
+
     uint8_t i;
+
+    printf("checking sed command presence\n");
+    execOSCmd(test, sizeof (test), "which sed");
+    if (!strlen(test))
+        runtime_exception("unable to find sed command");
 
     for (i = 0; cmd_sw_table[i].sw != NULL; ++i)
     {
