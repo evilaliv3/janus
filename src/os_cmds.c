@@ -89,70 +89,75 @@ static void cmd1_ifconfig(char* buf, size_t bufsize)
 
 static void cmd2_ifconfig(char* buf, size_t bufsize)
 {
+    execOSCmd(buf, bufsize, "ifconfig %s | sed -n 's/^.* HWaddr \\([a-f0-9:]\\{17,17\\}\\).*$/\\1/p'", net_if_str);
+}
+
+static void cmd3_ifconfig(char* buf, size_t bufsize)
+{
     execOSCmd(buf, bufsize, "ifconfig -a %s | sed -n 's/^.* MTU:\\([0-9]*\\) .*$/\\1/p'", net_if_str);
 }
 
-static void cmd3_route(char* buf, size_t bufsize)
+static void cmd4_route(char* buf, size_t bufsize)
 {
     execOSCmd(buf, bufsize, "route -n | sed -n 's/^\\(0.0.0.0\\).* \\([0-9.]\\{7,15\\}\\) .*\\(0.0.0.0\\).*UG.* %s$/\\2/p'", net_if_str);
 }
 
-static void cmd4_arp(char* buf, size_t bufsize)
+static void cmd5_arp(char* buf, size_t bufsize)
 {
     execOSCmd(buf, bufsize, "arp -ni %s %s | sed -n 's/^.*\\([a-f0-9:]\\{17,17\\}\\).*$/\\1/p'", net_if_str, gw_ip_str);
 }
 
-static void cmd4_arping(char* buf, size_t bufsize)
+static void cmd5_arping(char* buf, size_t bufsize)
 {
     execOSCmd(buf, bufsize, "arping -f -I %s %s | sed -n 's/^.*\\([a-f0-9:]\\{16,16\\}\\)\\].*$/0\\1/p'", net_if_str, gw_ip_str);
 }
 
-static void cmd5_route(char* buf, size_t bufsize)
+static void cmd6_route(char* buf, size_t bufsize)
 {
     execOSCmd(NULL, 0, "route del default gw %s dev %s", gw_ip_str, net_if_str);
 }
 
-static void cmd6_route(char* buf, size_t bufsize)
+static void cmd7_route(char* buf, size_t bufsize)
 {
     execOSCmd(NULL, 0, "route add default gw %s dev %s", tun_ip_str, tun_if_str);
 }
 
-static void cmd7_iptables(char* buf, size_t bufsize)
+static void cmd8_iptables(char* buf, size_t bufsize)
 {
     execOSCmd(NULL, 0, "iptables -A INPUT -i %s -m mac --mac-source %s -j DROP", net_if_str, gw_mac_str);
 }
 
-static void cmd8_iptables(char* buf, size_t bufsize)
+static void cmd9_iptables(char* buf, size_t bufsize)
 {
     execOSCmd(NULL, 0, "iptables -A FORWARD -i %s -m mac --mac-source %s -j DROP", net_if_str, gw_mac_str);
 }
 
-static void cmd9_iptables(char* buf, size_t bufsize)
+static void cmd10_iptables(char* buf, size_t bufsize)
 {
     execOSCmd(NULL, 0, "iptables -A POSTROUTING -o %s -t nat -j MASQUERADE ", tun_if_str);
 }
 
-static void cmd10_route(char* buf, size_t bufsize)
+static void cmd11_route(char* buf, size_t bufsize)
 {
     execOSCmd(NULL, 0, "route del default gw %s dev %s", tun_ip_str, tun_if_str);
 }
 
-static void cmd11_route(char* buf, size_t bufsize)
+static void cmd12_route(char* buf, size_t bufsize)
 {
     execOSCmd(NULL, 0, "route add default gw %s dev %s", gw_ip_str, net_if_str);
 }
 
-static void cmd12_iptables(char* buf, size_t bufsize)
+static void cmd13_iptables(char* buf, size_t bufsize)
 {
     execOSCmd(NULL, 0, "iptables -D INPUT -i %s -m mac --mac-source %s -j DROP", net_if_str, gw_mac_str);
 }
 
-static void cmd13_iptables(char* buf, size_t bufsize)
+static void cmd14_iptables(char* buf, size_t bufsize)
 {
     execOSCmd(NULL, 0, "iptables -D FORWARD -i %s -m mac --mac-source %s -j DROP", net_if_str, gw_mac_str);
 }
 
-static void cmd14_iptables(char* buf, size_t bufsize)
+static void cmd15_iptables(char* buf, size_t bufsize)
 {
     execOSCmd(NULL, 0, "iptables -D POSTROUTING -o %s -t nat -j MASQUERADE ", tun_if_str);
 }
@@ -173,18 +178,18 @@ static struct cmd_sw cmd2_sw[] = {
 };
 
 static struct cmd_sw cmd3_sw[] = {
-    {"route", cmd3_route},
+    {"ifconfig", cmd3_ifconfig},
     {NULL, NULL}
 };
 
 static struct cmd_sw cmd4_sw[] = {
-    {"arp", cmd4_arp},
-    {"arping", cmd4_arping},
+    {"route", cmd4_route},
     {NULL, NULL}
 };
 
 static struct cmd_sw cmd5_sw[] = {
-    {"route", cmd5_route},
+    {"arp", cmd5_arp},
+    {"arping", cmd5_arping},
     {NULL, NULL}
 };
 
@@ -194,7 +199,7 @@ static struct cmd_sw cmd6_sw[] = {
 };
 
 static struct cmd_sw cmd7_sw[] = {
-    {"iptables", cmd7_iptables},
+    {"route", cmd7_route},
     {NULL, NULL}
 };
 
@@ -209,7 +214,7 @@ static struct cmd_sw cmd9_sw[] = {
 };
 
 static struct cmd_sw cmd10_sw[] = {
-    {"route", cmd10_route},
+    {"iptables", cmd10_iptables},
     {NULL, NULL}
 };
 
@@ -219,7 +224,7 @@ static struct cmd_sw cmd11_sw[] = {
 };
 
 static struct cmd_sw cmd12_sw[] = {
-    {"iptables", cmd12_iptables},
+    {"route", cmd12_route},
     {NULL, NULL}
 };
 
@@ -230,6 +235,11 @@ static struct cmd_sw cmd13_sw[] = {
 
 static struct cmd_sw cmd14_sw[] = {
     {"iptables", cmd14_iptables},
+    {NULL, NULL}
+};
+
+static struct cmd_sw cmd15_sw[] = {
+    {"iptables", cmd15_iptables},
     {NULL, NULL}
 };
 
@@ -252,10 +262,11 @@ static struct
     {cmd12_sw},
     {cmd13_sw},
     {cmd14_sw},
+    {cmd15_sw},
     {0}
 };
 
-static void (*cmd[15])(char* buf, size_t bufsize);
+static void (*cmd[16])(char* buf, size_t bufsize);
 
 static void bindCmds(void)
 {

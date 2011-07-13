@@ -32,7 +32,6 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <net/if.h>
-#include <linux/if_ether.h>
 #include <linux/if_tun.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
@@ -42,6 +41,22 @@
 
 #include "janus.h"
 #include "packet_queue.h"
+
+#ifndef ETH_HLEN
+#define ETH_HLEN    14
+#endif
+
+#ifndef ETH_ALEN
+#define ETH_ALEN     6
+#endif
+
+#ifndef ETH_P_IP
+#define ETH_P_IP        0x0800
+#endif
+
+#ifndef IPPROTO_IP
+#define IPPROTO_IP   0
+#endif
 
 #define J_CLOSE(p)             if(*p != -1) {close(*p); *p = -1; }
 #define J_PCAP_CLOSE(p)        if(*p != NULL) {pcap_close(*p); *p = NULL; }
@@ -67,17 +82,19 @@ static char *macpkt;
 
 static char net_if_str[CONST_JANUS_BUFSIZE];
 static char net_ip_str[CONST_JANUS_BUFSIZE];
+static char net_mac_str[CONST_JANUS_BUFSIZE];
 static char net_mtu_str[CONST_JANUS_BUFSIZE];
 static char tun_if_str[CONST_JANUS_BUFSIZE];
 static char tun_ip_str[CONST_JANUS_BUFSIZE];
 static char gw_mac_str[CONST_JANUS_BUFSIZE];
 static char gw_ip_str[CONST_JANUS_BUFSIZE];
 
-static uint16_t mtu;
+static uint8_t if_mac[ETH_ALEN];
 static uint8_t gw_mac[ETH_ALEN];
+static uint16_t mtu;
 
-static uint8_t netif_recv_hdr[ETH_HLEN];
 static uint8_t netif_send_hdr[ETH_HLEN];
+static uint8_t netif_recv_hdr[ETH_HLEN];
 
 struct mitm_descriptor
 {
@@ -312,31 +329,7 @@ static uint8_t setupNET(void)
 {
     int net = -1;
 
-    struct ifreq tmpifr;
-    int tmpfd;
     char ebuf[PCAP_ERRBUF_SIZE];
-
-    tmpfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
-
-    memset(&tmpifr, 0x00, sizeof (tmpifr));
-    strncpy(tmpifr.ifr_name, net_if_str, sizeof (tmpifr.ifr_name));
-    if (ioctl(tmpfd, SIOCGIFINDEX, &tmpifr) == -1)
-        runtime_exception("unable to execute ioctl(SIOCGIFINDEX) on interface %s", net_if_str);
-
-    if (ioctl(tmpfd, SIOCGIFHWADDR, &tmpifr) == -1)
-        runtime_exception("unable to execute ioctl(SIOCGIFHWADDR) on interface %s", net_if_str);
-
-    close(tmpfd);
-
-    memcpy(netif_send_hdr, gw_mac, ETH_ALEN);
-    memcpy(&netif_send_hdr[ETH_ALEN], tmpifr.ifr_hwaddr.sa_data, ETH_ALEN);
-    *(uint16_t *)&netif_send_hdr[2 * ETH_ALEN] = htons(ETH_P_IP);
-
-    memcpy(netif_recv_hdr, tmpifr.ifr_hwaddr.sa_data, ETH_ALEN);
-    memcpy(&netif_recv_hdr[ETH_ALEN], gw_mac, ETH_ALEN);
-    *(uint16_t *)&netif_recv_hdr[2 * ETH_ALEN] = htons(ETH_P_IP);
-
-    memcpy(macpkt, netif_send_hdr, ETH_HLEN);
 
     capnet = pcap_open_live(net_if_str, 65535, 0, -1, ebuf);
     if (capnet == NULL)
@@ -460,7 +453,13 @@ void JANUS_Bootstrap(void)
 
     printf("detected local ip address on interface %s: [%s]\n", net_if_str, net_ip_str);
 
-    cmd[2](net_mtu_str, sizeof (net_mtu_str));
+    cmd[2](net_mac_str, sizeof (net_mac_str));
+    if (!strlen(net_mac_str))
+        runtime_exception("unable to detect in");
+
+    printf("detected local mac address on interface %s: [%s]\n", net_if_str, net_mac_str);
+
+    cmd[3](net_mtu_str, sizeof (net_mtu_str));
     if (!strlen(net_mtu_str))
         runtime_exception("unable to detect default gateway mtu");
 
@@ -468,19 +467,15 @@ void JANUS_Bootstrap(void)
 
     printf("detected default gateway MTU: [%s]\n", net_mtu_str);
 
-    cmd[3](gw_ip_str, sizeof (gw_ip_str));
+    cmd[4](gw_ip_str, sizeof (gw_ip_str));
     if (!strlen(gw_ip_str))
         runtime_exception("unable to detect default gateway ip address");
 
     printf("detected default gateway ip address: [%s]\n", gw_ip_str);
 
-    cmd[4](gw_mac_str, sizeof (gw_mac_str));
+    cmd[5](gw_mac_str, sizeof (gw_mac_str));
     if (!strlen(gw_mac_str))
         runtime_exception("unable to detect default gateway mac address");
-
-    sscanf(gw_mac_str, "%02x:%02x:%02x:%02x:%02x:%02x", &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]);
-    for (i = 0; i < ETH_ALEN; ++i)
-        gw_mac[i] = mac[i];
 
     printf("detected default gateway mac address: [%s]\n", gw_mac_str);
 
@@ -489,6 +484,24 @@ void JANUS_Bootstrap(void)
     macpkt = malloc(ETH_HLEN + mtu);
     if (macpkt == NULL)
         runtime_exception("unable to allocate memory for the datalink packet buffer");
+
+    sscanf(net_mac_str, "%02x:%02x:%02x:%02x:%02x:%02x", &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]);
+    for (i = 0; i < ETH_ALEN; ++i)
+        if_mac[i] = mac[i];
+
+    sscanf(gw_mac_str, "%02x:%02x:%02x:%02x:%02x:%02x", &mac[0], &mac[1], &mac[2], &mac[3], &mac[4], &mac[5]);
+    for (i = 0; i < ETH_ALEN; ++i)
+        gw_mac[i] = mac[i];
+
+    memcpy(netif_send_hdr, gw_mac, ETH_ALEN);
+    memcpy(&netif_send_hdr[ETH_ALEN], if_mac, ETH_ALEN);
+    *(uint16_t *)&netif_send_hdr[2 * ETH_ALEN] = htons(ETH_P_IP);
+
+    memcpy(netif_recv_hdr, if_mac, ETH_ALEN);
+    memcpy(&netif_recv_hdr[ETH_ALEN], gw_mac, ETH_ALEN);
+    *(uint16_t *)&netif_recv_hdr[2 * ETH_ALEN] = htons(ETH_P_IP);
+
+    memcpy(macpkt, netif_send_hdr, ETH_HLEN);
 
     pbufs = pbufs_malloc(conf.pqueue_len, mtu);
     if (pbufs == NULL)
@@ -524,7 +537,7 @@ void JANUS_Init(void)
     mitm_desc[TUN].fd[FDMITMATTACH] = setupMitmAttach(conf.listen_port_out);
     mitm_desc[TUN].target = &mitm_desc[NET];
 
-    for (i = 5; i < 10; ++i)
+    for (i = 6; i < 11; ++i)
         cmd[i](NULL, 0);
 }
 
@@ -553,7 +566,7 @@ void JANUS_Reset(void)
 {
     uint8_t i, j;
 
-    for (i = 10; i < 15; ++i)
+    for (i = 11; i < 16; ++i)
         cmd[i](NULL, 0);
 
     J_PCAP_CLOSE(&capnet);
