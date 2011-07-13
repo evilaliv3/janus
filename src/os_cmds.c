@@ -159,7 +159,17 @@ static void cmd14_iptables(char* buf, size_t bufsize)
 
 static void cmd15_iptables(char* buf, size_t bufsize)
 {
-    execOSCmd(NULL, 0, "iptables -D POSTROUTING -o %s -t nat -j MASQUERADE ", tun_if_str);
+    execOSCmd(NULL, 0, "iptables -D POSTROUTING -o %s -t nat -j MASQUERADE", tun_if_str);
+}
+
+static void cmd16_ifconfig(char* buf, size_t bufsize)
+{
+    execOSCmd(NULL, 0, "ifconfig %s %s pointopoint %s", tun_if_str, net_ip_str, tun_ip_str);
+}
+
+static void cmd17_ifconfig(char* buf, size_t bufsize)
+{
+    execOSCmd(NULL, 0, "ifconfig %s mtu %s", tun_if_str, net_mtu_str);
 }
 
 static struct cmd_sw cmd0_sw[] = {
@@ -243,6 +253,16 @@ static struct cmd_sw cmd15_sw[] = {
     {NULL, NULL}
 };
 
+static struct cmd_sw cmd16_sw[] = {
+    {"ifconfig", cmd16_ifconfig},
+    {NULL, NULL}
+};
+
+static struct cmd_sw cmd17_sw[] = {
+    {"ifconfig", cmd17_ifconfig},
+    {NULL, NULL}
+};
+
 static struct
 {
     struct cmd_sw *sw;
@@ -263,10 +283,12 @@ static struct
     {cmd13_sw},
     {cmd14_sw},
     {cmd15_sw},
+    {cmd16_sw},
+    {cmd17_sw},
     {0}
 };
 
-static void (*cmd[16])(char* buf, size_t bufsize);
+static void (*cmd[18])(char* buf, size_t bufsize);
 
 static void bindCmds(void)
 {

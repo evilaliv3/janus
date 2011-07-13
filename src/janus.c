@@ -32,6 +32,7 @@
 #include <arpa/inet.h>
 #include <sys/socket.h>
 #include <net/if.h>
+#include <netinet/in.h>
 #include <linux/if_tun.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
@@ -351,8 +352,6 @@ static uint8_t setupTUN(void)
 
     const char *tundev = "/dev/net/tun";
     struct ifreq tmpifr;
-    struct sockaddr_in * const ssa = (struct sockaddr_in *) &tmpifr.ifr_addr;
-    int tmpfd;
     int i;
 
     if ((tun = open(tundev, O_RDWR)) == -1)
@@ -374,31 +373,8 @@ static uint8_t setupTUN(void)
     snprintf(tun_if_str, sizeof (tun_if_str), "%s", tmpifr.ifr_name);
     snprintf(tun_ip_str, sizeof (tun_ip_str), "%s%u", CONST_JANUS_FAKEGW_IP, i + 1);
 
-    tmpfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
-
-    if (ioctl(tmpfd, SIOCGIFFLAGS, &tmpifr) == -1)
-        runtime_exception("unable to get tun flags (SIOCGIFFLAGS)");
-
-    tmpifr.ifr_flags |= IFF_UP | IFF_RUNNING | IFF_POINTOPOINT;
-
-    if (ioctl(tmpfd, SIOCSIFFLAGS, &tmpifr) == -1)
-        runtime_exception("unable to set tun flags (SIOCSIFFLAGS)");
-
-    tmpifr.ifr_mtu = mtu;
-    if (ioctl(tmpfd, SIOCSIFMTU, &tmpifr) == -1)
-        runtime_exception("unable to set tun mtu (SIOCSIFMTU)");
-
-    ssa->sin_family = AF_INET;
-    ssa->sin_addr.s_addr = inet_addr(net_ip_str);
-    if (ioctl(tmpfd, SIOCSIFADDR, &tmpifr) == -1)
-        runtime_exception("unable to set tun local addr to %s", net_ip_str);
-
-    ssa->sin_family = AF_INET;
-    ssa->sin_addr.s_addr = inet_addr(tun_ip_str);
-    if (ioctl(tmpfd, SIOCSIFDSTADDR, &tmpifr) == -1)
-        runtime_exception("unable to set tun point-to-point dest addr to %s", tun_ip_str);
-
-    close(tmpfd);
+    cmd[16](NULL, 0);
+    cmd[17](NULL, 0);
 
     setfdflag(tun, FD_CLOEXEC);
     setflflag(tun, O_NONBLOCK);
@@ -461,7 +437,7 @@ void JANUS_Bootstrap(void)
 
     cmd[3](net_mtu_str, sizeof (net_mtu_str));
     if (!strlen(net_mtu_str))
-        runtime_exception("unable to detect default gateway mtu");
+        runtime_exception("unable to detect", net_if_str, " mtu");
 
     mtu = atoi(net_mtu_str);
 
