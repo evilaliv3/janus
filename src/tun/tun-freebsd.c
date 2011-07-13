@@ -19,34 +19,31 @@
  *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#ifndef JANUS_H
-#define JANUS_H
+#include <fcntl.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
-#define CONST_JANUS_VERSION         "0.1"
-#define CONST_JANUS_IFNAME          "janus"
-#define CONST_JANUS_LISTEN_IP       "127.0.0.1"
-#define CONST_JANUS_FAKEGW_IP       "212.77.1.1"
-#define CONST_JANUS_LISTEN_PORT_IN  30201
-#define CONST_JANUS_LISTEN_PORT_OUT 10203
-#define CONST_JANUS_BUFSIZE         512
-#define CONST_JANUS_PQUEUE_LEN      32
-#define REGEXP_IPV4                 "([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})"
-#define REGEXP_HOST                 "^"REGEXP_IPV4"$"
+#define N 64
 
-struct janus_config
+int tun_open(char *namebuf, size_t namebufsize)
 {
-    char listen_ip [CONST_JANUS_BUFSIZE];
-    uint16_t listen_port_in;
-    uint16_t listen_port_out;
-    uint16_t pqueue_len;
-};
+    int tun = -1;
 
-void JANUS_Bootstrap(void);
-void JANUS_Init(void);
-void JANUS_Reset(void);
-void JANUS_Shutdown(void);
-void JANUS_EventLoop(void);
+    const char *tundev[11];
 
-int tun_open(char *namebuf, size_t namebufsize);
+    for (i = 0; i <= MAX_DEVS; i++) {
+        snprintf(tundev, sizeof(tundev), "/dev/tun%d", i);
 
-#endif /* JANUS_H */
+        if ((tun = open(tundev, O_RDWR)) != -1)
+        {
+            snprintf(namebuf, namebufsize, "%s", tmpifr.ifr_name);
+            break;
+        }
+    }
+
+    return tun;
+}

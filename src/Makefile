@@ -150,35 +150,101 @@ janus/fast:
 	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/build
 .PHONY : janus/fast
 
+janus.o: janus.c.o
+.PHONY : janus.o
+
 # target to build an object file
-main.o:
-	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/main.o
+janus.c.o:
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/janus.c.o
+.PHONY : janus.c.o
+
+janus.i: janus.c.i
+.PHONY : janus.i
+
+# target to preprocess a source file
+janus.c.i:
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/janus.c.i
+.PHONY : janus.c.i
+
+janus.s: janus.c.s
+.PHONY : janus.s
+
+# target to generate assembly for a file
+janus.c.s:
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/janus.c.s
+.PHONY : janus.c.s
+
+main.o: main.c.o
 .PHONY : main.o
 
-# target to preprocess a source file
-main.i:
-	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/main.i
+# target to build an object file
+main.c.o:
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/main.c.o
+.PHONY : main.c.o
+
+main.i: main.c.i
 .PHONY : main.i
 
-# target to generate assembly for a file
-main.s:
-	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/main.s
+# target to preprocess a source file
+main.c.i:
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/main.c.i
+.PHONY : main.c.i
+
+main.s: main.c.s
 .PHONY : main.s
 
-# target to build an object file
-packet_queue.o:
-	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/packet_queue.o
+# target to generate assembly for a file
+main.c.s:
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/main.c.s
+.PHONY : main.c.s
+
+packet_queue.o: packet_queue.c.o
 .PHONY : packet_queue.o
 
-# target to preprocess a source file
-packet_queue.i:
-	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/packet_queue.i
+# target to build an object file
+packet_queue.c.o:
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/packet_queue.c.o
+.PHONY : packet_queue.c.o
+
+packet_queue.i: packet_queue.c.i
 .PHONY : packet_queue.i
 
-# target to generate assembly for a file
-packet_queue.s:
-	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/packet_queue.s
+# target to preprocess a source file
+packet_queue.c.i:
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/packet_queue.c.i
+.PHONY : packet_queue.c.i
+
+packet_queue.s: packet_queue.c.s
 .PHONY : packet_queue.s
+
+# target to generate assembly for a file
+packet_queue.c.s:
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/packet_queue.c.s
+.PHONY : packet_queue.c.s
+
+tun/tun-linux.o: tun/tun-linux.c.o
+.PHONY : tun/tun-linux.o
+
+# target to build an object file
+tun/tun-linux.c.o:
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/tun/tun-linux.c.o
+.PHONY : tun/tun-linux.c.o
+
+tun/tun-linux.i: tun/tun-linux.c.i
+.PHONY : tun/tun-linux.i
+
+# target to preprocess a source file
+tun/tun-linux.c.i:
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/tun/tun-linux.c.i
+.PHONY : tun/tun-linux.c.i
+
+tun/tun-linux.s: tun/tun-linux.c.s
+.PHONY : tun/tun-linux.s
+
+# target to generate assembly for a file
+tun/tun-linux.c.s:
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/tun/tun-linux.c.s
+.PHONY : tun/tun-linux.c.s
 
 # Help Target
 help:
@@ -193,12 +259,18 @@ help:
 	@echo "... janus"
 	@echo "... list_install_components"
 	@echo "... rebuild_cache"
+	@echo "... janus.o"
+	@echo "... janus.i"
+	@echo "... janus.s"
 	@echo "... main.o"
 	@echo "... main.i"
 	@echo "... main.s"
 	@echo "... packet_queue.o"
 	@echo "... packet_queue.i"
 	@echo "... packet_queue.s"
+	@echo "... tun/tun-linux.o"
+	@echo "... tun/tun-linux.i"
+	@echo "... tun/tun-linux.s"
 .PHONY : help
 
 

@@ -1,6 +1,15 @@
+IF("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
+    SET(TUN "tun/tun-linux")
+ELSEIF("${CMAKE_SYSTEM_NAME}" MATCHES "FreeBSD")
+    SET(TUN "tun/tun-freebsd")
+ELSE()
+    MESSAGE(FATAL_ERROR "${CMAKE_SYSTEM_NAME} system not tested yet")
+ENDIF()
+
 ADD_EXECUTABLE(
     janus
     packet_queue
+    ${TUN}
     janus
     main
 )
@@ -20,14 +29,6 @@ FOREACH( PACKAGE ${PACKAGELIST} )
 ENDFOREACH()
 
 SET( CMAKE_C_FLAGS "-O3 -Wall -pedantic ${CMAKE_C_FLAGS}" )
-
-IF("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
-    SET(LINUX 1)
-ENDIF("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
-
-IF("${CMAKE_SYSTEM_NAME}" MATCHES "FreeBSD")
-    SET(FREEBSD 1)
-ENDIF("${CMAKE_SYSTEM_NAME}" MATCHES "FreeBSD")
 
 CONFIGURE_FILE(config.h.in config.h)
 

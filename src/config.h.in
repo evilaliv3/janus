@@ -1,1 +1,2 @@
-#cmakedefine LINUX "@LINUX@"
+#cmakedefine LINUX   "@LINUX@"
+#cmakedefine FREEBDS "@FREEBSD@"

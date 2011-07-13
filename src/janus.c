@@ -33,7 +33,6 @@
 #include <sys/socket.h>
 #include <net/if.h>
 #include <netinet/in.h>
-#include <linux/if_tun.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 
@@ -348,30 +347,11 @@ static uint8_t setupNET(void)
 
 static uint8_t setupTUN(void)
 {
-    int tun = -1;
+    int tun = tun_open(tun_if_str, sizeof(tun_if_str));
+    if(tun == -1)
+        runtime_exception("unable to open tun interface");
 
-    const char *tundev = "/dev/net/tun";
-    struct ifreq tmpifr;
-    int i;
-
-    if ((tun = open(tundev, O_RDWR)) == -1)
-        runtime_exception("unable to open %s", tundev);
-
-    memset(&tmpifr, 0x00, sizeof (tmpifr));
-    tmpifr.ifr_flags = IFF_TUN | IFF_NO_PI;
-
-    for (i = 0; i < 64; ++i)
-    {
-        snprintf(tmpifr.ifr_name, sizeof (tmpifr.ifr_name), "%s%u", CONST_JANUS_IFNAME, i);
-        if (!ioctl(tun, TUNSETIFF, &tmpifr))
-            break;
-    }
-
-    if (i == 64)
-        runtime_exception("unable to set tun flags (TUNSETIFF)");
-
-    snprintf(tun_if_str, sizeof (tun_if_str), "%s", tmpifr.ifr_name);
-    snprintf(tun_ip_str, sizeof (tun_ip_str), "%s%u", CONST_JANUS_FAKEGW_IP, i + 1);
+    snprintf(tun_ip_str, sizeof (tun_ip_str), "%s", CONST_JANUS_FAKEGW_IP);
 
     cmd[16](NULL, 0);
     cmd[17](NULL, 0);
