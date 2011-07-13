@@ -22,6 +22,7 @@
 #include <fcntl.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdint.h>
 #include <string.h>
 #include <unistd.h>
 #include <sys/types.h>
@@ -33,16 +34,14 @@ int tun_open(char *namebuf, size_t namebufsize)
 {
     int tun = -1;
 
-    const char *tundev[11];
+    uint8_t i;
 
-    for (i = 0; i <= MAX_DEVS; i++) {
-        snprintf(tundev, sizeof(tundev), "/dev/tun%d", i);
+    for (i = 0; i <= N; i++)
+    {
+        snprintf(namebuf, sizeof(namebuf), "/dev/tun%d", i);
 
-        if ((tun = open(tundev, O_RDWR)) != -1)
-        {
-            snprintf(namebuf, namebufsize, "%s", tmpifr.ifr_name);
+        if ((tun = open(namebuf, O_RDWR)) != -1)
             break;
-        }
     }
 
     return tun;
