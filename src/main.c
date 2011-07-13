@@ -75,8 +75,9 @@ static void sigtrapSetup(void(sigtrap_function) (int))
 
     sigemptyset(&sig_nset);
 
-    sigaddset(&sig_nset, SIGINT);
     sigaddset(&sig_nset, SIGABRT);
+    sigaddset(&sig_nset, SIGILL);
+    sigaddset(&sig_nset, SIGINT);
     sigaddset(&sig_nset, SIGPIPE);
     sigaddset(&sig_nset, SIGTERM);
     sigaddset(&sig_nset, SIGQUIT);
@@ -85,13 +86,12 @@ static void sigtrapSetup(void(sigtrap_function) (int))
     action.sa_handler = sigtrap_function;
     action.sa_mask = sig_nset;
 
-    sigaction(SIGINT, &action, NULL);
     sigaction(SIGABRT, &action, NULL);
+    sigaction(SIGINT, &action, NULL);
+    sigaction(SIGILL, &action, NULL);
     sigaction(SIGPIPE, &action, NULL);
     sigaction(SIGTERM, &action, NULL);
     sigaction(SIGQUIT, &action, NULL);
-    sigaction(SIGUSR1, &action, NULL);
-    sigaction(SIGUSR2, &action, NULL);
 }
 
 uint8_t validate(const char *string, char *pattern)

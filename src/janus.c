@@ -43,6 +43,11 @@
 #include "janus.h"
 #include "packet_queue.h"
 
+#define J_CLOSE(p)             if(*p != -1) {close(*p); *p = -1; }
+#define J_PCAP_CLOSE(p)        if(*p != NULL) {pcap_close(*p); *p = NULL; }
+#define J_BUFFEREVENT_FREE(p)  if(*p != NULL) {bufferevent_free(*p); *p = NULL; }
+#define J_PBUF_RELEASE(p)      if(*p != NULL) { *p = NULL; }
+
 #define NET 0
 #define TUN 1
 
@@ -55,7 +60,7 @@ enum mitm_t
 
 struct janus_config conf;
 
-static struct packets *pkts;
+static struct packets *pbufs;
 
 static pcap_t *capnet;
 static char *macpkt;
@@ -77,10 +82,10 @@ static uint8_t netif_send_hdr[ETH_HLEN];
 struct mitm_descriptor
 {
     int fd[3]; /* FDIF | FDMITM | FDMITMATTACH */
-    struct event ev_recv[3]; /* FDIF | FDMITM | FDMITMATTACH */
     struct event ev_send; /* FDIF */
-    ssize_t(*fd_recv)(); /* FDIF */
-    ssize_t(*fd_send)(); /* FDIF */
+    struct event ev_recv[3]; /* FDIF | FDMITM | FDMITMATTACH */
+    ssize_t(*fd_recv)(int sockfd, struct packet * pbuf); /* FDIF */
+    ssize_t(*fd_send)(int sockfd, struct packet * pbuf); /* FDIF */
     struct packet * pbuf_recv[2]; /* FDIF | FDMITM */
     struct packet* pbuf_send; /* FDIF */
     struct packet_queue * pqueue; /* FDIF */
@@ -125,36 +130,36 @@ static struct packet* bufferedRead(struct mitm_descriptor* desc)
     return queue_pop_front(desc->pqueue, &desc->pbuf_send);
 }
 
-static void bufferedWrite(struct mitm_descriptor* desc, enum mitm_t i, struct packet *pkt)
+static void bufferedWrite(struct mitm_descriptor* desc, enum mitm_t i, struct packet *pbuf)
 {
-    struct mitm_descriptor *target = desc->target;
+    struct mitm_descriptor * const target = desc->target;
 
     if ((i == FDIF) && (desc->fd[FDMITM] != -1))
     {
-        uint16_t size = htons(pkt->size);
+        uint16_t size = htons(pbuf->size);
         bufferevent_write(desc->mitm_bufferevent, &size, sizeof (size));
-        bufferevent_write(desc->mitm_bufferevent, pkt->buf, pkt->size);
-        pbuf_release(pkts, pkt);
+        bufferevent_write(desc->mitm_bufferevent, pbuf->buf, pbuf->size);
+        pbuf_release(pbufs, pbuf);
     }
     else
     {
         if (target->pqueue->count == 0)
             event_add(&target->ev_send, NULL);
 
-        queue_push_back(target->pqueue, pkt);
+        queue_push_back(target->pqueue, pbuf);
     }
 }
 
-static ssize_t netif_recv(void)
+static ssize_t netif_recv(int sockfd, struct packet* pbuf)
 {
     struct pcap_pkthdr header;
-    const u_char *packet = pcap_next(capnet, &header);
+    const u_char * const packet = pcap_next(capnet, &header);
 
     if ((packet != NULL) && !memcmp(packet, netif_recv_hdr, ETH_HLEN))
     {
         uint32_t len = header.len - ETH_HLEN;
         len = (len > mtu) ? mtu : len;
-        memcpy(mitm_desc[NET].pbuf_recv[FDIF]->buf, packet + ETH_HLEN, len);
+        memcpy(pbuf->buf, packet + ETH_HLEN, len);
         return header.len - ETH_HLEN;
     }
 
@@ -162,10 +167,8 @@ static ssize_t netif_recv(void)
     return -1;
 }
 
-static ssize_t netif_send(void)
+static ssize_t netif_send(int sockfd, struct packet* pbuf)
 {
-    struct packet *pbuf = mitm_desc[NET].pbuf_send;
-
     memcpy(&macpkt[ETH_HLEN], pbuf->buf, pbuf->size);
 
     if (pcap_inject(capnet, macpkt, ETH_HLEN + pbuf->size) != -1)
@@ -174,25 +177,25 @@ static ssize_t netif_send(void)
         return -1;
 }
 
-static ssize_t tunif_recv(void)
+static ssize_t tunif_recv(int sockfd, struct packet* pbuf)
 {
-    return read(mitm_desc[TUN].fd[FDIF], mitm_desc[TUN].pbuf_recv[FDIF]->buf, mtu);
+    return read(sockfd, pbuf->buf, mtu);
 }
 
-static ssize_t tunif_send(void)
+static ssize_t tunif_send(int sockfd, struct packet* pbuf)
 {
-    return write(mitm_desc[TUN].fd[FDIF], mitm_desc[TUN].pbuf_send->buf, mitm_desc[TUN].pbuf_send->size);
+    return write(sockfd, pbuf->buf, pbuf->size);
 }
 
 static void recv_cb(int f, short event, void *arg)
 {
-    struct mitm_descriptor* desc = arg;
+    struct mitm_descriptor * const desc = arg;
 
-    struct packet **pbuf = &desc->pbuf_recv[FDIF];
+    struct packet * * const pbuf = &desc->pbuf_recv[FDIF];
 
-    if ((*pbuf != NULL) || ((*pbuf = pbuf_acquire(pkts)) != NULL))
+    if ((*pbuf != NULL) || ((*pbuf = pbuf_acquire(pbufs)) != NULL))
     {
-        ssize_t ret = desc->fd_recv();
+        ssize_t ret = desc->fd_recv(desc->fd[FDIF], *pbuf);
 
         if (ret > 0)
         {
@@ -210,17 +213,17 @@ static void recv_cb(int f, short event, void *arg)
 
 static void send_cb(int f, short event, void *arg)
 {
-    struct mitm_descriptor* desc = arg;
+    struct mitm_descriptor * const desc = arg;
 
-    struct packet **pbuf = &desc->pbuf_send;
+    struct packet * * const pbuf = &desc->pbuf_send;
 
     if (*pbuf != NULL || ((*pbuf = bufferedRead(desc)) != NULL))
     {
-        const ssize_t ret = desc->fd_send();
+        const ssize_t ret = desc->fd_send(desc->fd[FDIF], *pbuf);
 
         if (ret == (*pbuf)->size)
         {
-            pbuf_release(pkts, *pbuf);
+            pbuf_release(pbufs, *pbuf);
             *pbuf = NULL;
 
             if (desc->pqueue->count == 0)
@@ -236,24 +239,21 @@ static void send_cb(int f, short event, void *arg)
 
 static void mitm_rs_error(struct mitm_descriptor* desc)
 {
-    close(desc->fd[FDMITM]);
-    desc->fd[FDMITM] = -1;
-
-    bufferevent_free(desc->mitm_bufferevent);
-    desc->mitm_bufferevent = NULL;
+    J_CLOSE(&desc->fd[FDMITM]);
+    J_BUFFEREVENT_FREE(&desc->mitm_bufferevent);
 
     event_add(&desc->ev_recv[FDMITMATTACH], NULL);
 }
 
 static void mitmrecv_cb(struct bufferevent *sabe, void *arg)
 {
-    struct mitm_descriptor* desc = arg;
+    struct mitm_descriptor * const desc = arg;
 
-    struct packet **pbuf = &desc->pbuf_recv[FDMITM];
+    struct packet * * const pbuf = &desc->pbuf_recv[FDMITM];
 
     if (*pbuf == NULL)
     {
-        *pbuf = pbuf_acquire(pkts);
+        *pbuf = pbuf_acquire(pbufs);
         if (*pbuf == NULL)
             return;
 
@@ -288,7 +288,7 @@ static void mitm_rs_error_cb(struct bufferevent *sabe, short what, void *arg)
 
 static void mitmattach_cb(int f, short event, void *arg)
 {
-    struct mitm_descriptor* desc = arg;
+    struct mitm_descriptor * const desc = arg;
 
     desc->fd[FDMITM] = accept(desc->fd[FDMITMATTACH], NULL, NULL);
     if (desc->fd[FDMITM] != -1)
@@ -314,7 +314,7 @@ static uint8_t setupNET(void)
 
     struct ifreq tmpifr;
     int tmpfd;
-    static char ebuf[PCAP_ERRBUF_SIZE];
+    char ebuf[PCAP_ERRBUF_SIZE];
 
     tmpfd = socket(AF_INET, SOCK_DGRAM, IPPROTO_IP);
 
@@ -326,6 +326,8 @@ static uint8_t setupNET(void)
     if (ioctl(tmpfd, SIOCGIFHWADDR, &tmpifr) == -1)
         runtime_exception("unable to execute ioctl(SIOCGIFHWADDR) on interface %s", net_if_str);
 
+    close(tmpfd);
+
     memcpy(netif_send_hdr, gw_mac, ETH_ALEN);
     memcpy(&netif_send_hdr[ETH_ALEN], tmpifr.ifr_hwaddr.sa_data, ETH_ALEN);
     *(uint16_t *)&netif_send_hdr[2 * ETH_ALEN] = htons(ETH_P_IP);
@@ -336,18 +338,16 @@ static uint8_t setupNET(void)
 
     memcpy(macpkt, netif_send_hdr, ETH_HLEN);
 
-    close(tmpfd);
-
     capnet = pcap_open_live(net_if_str, 65535, 0, -1, ebuf);
     if (capnet == NULL)
         runtime_exception("unable to open pcap handle on interface %s", net_if_str);
 
-    if (pcap_setnonblock(capnet, 1, ebuf) == -1)
-        runtime_exception("unable to set pcap handle in non blocking mode on interface %s", net_if_str);
-
     net = pcap_fileno(capnet);
 
     setfdflag(net, FD_CLOEXEC);
+
+    if (pcap_setnonblock(capnet, 1, ebuf) == -1)
+        runtime_exception("unable to set pcap handle in non blocking mode on interface %s", net_if_str);
 
     return net;
 }
@@ -358,7 +358,7 @@ static uint8_t setupTUN(void)
 
     const char *tundev = "/dev/net/tun";
     struct ifreq tmpifr;
-    struct sockaddr_in *ssa = (struct sockaddr_in *) &tmpifr.ifr_addr;
+    struct sockaddr_in * const ssa = (struct sockaddr_in *) &tmpifr.ifr_addr;
     int tmpfd;
     int i;
 
@@ -417,10 +417,10 @@ static int setupMitmAttach(uint16_t port)
 {
     int fd = -1;
 
-    int on = 1;
+    const int on = 1;
     struct sockaddr_in ssin;
 
-    if ((fd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
+    if ((fd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
         runtime_exception("unable to open socket");
 
     setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof (int));
@@ -431,10 +431,10 @@ static int setupMitmAttach(uint16_t port)
     if (!inet_aton(conf.listen_ip, (struct in_addr *) &ssin.sin_addr.s_addr))
         runtime_exception("invalid listening address provided");
 
-    if (bind(fd, (struct sockaddr *) &ssin, sizeof (struct sockaddr_in)) < 0)
+    if (bind(fd, (struct sockaddr *) &ssin, sizeof (struct sockaddr_in)) == -1)
         runtime_exception("unable to bind");
 
-    if (listen(fd, 0) < 0)
+    if (listen(fd, 0) == -1)
         runtime_exception("unable to listen");
 
     return fd;
@@ -484,37 +484,31 @@ void JANUS_Bootstrap(void)
 
     printf("detected default gateway mac address: [%s]\n", gw_mac_str);
 
-    mitm_desc[NET].fd_recv = netif_recv;
-    mitm_desc[NET].fd_send = netif_send;
-    mitm_desc[TUN].fd_recv = tunif_recv;
-    mitm_desc[TUN].fd_send = tunif_send;
-
     capnet = NULL;
 
     macpkt = malloc(ETH_HLEN + mtu);
     if (macpkt == NULL)
         runtime_exception("unable to allocate memory for the datalink packet buffer");
 
-    pkts = pbufs_malloc(conf.pqueue_len, mtu);
-    if (pkts == NULL)
+    pbufs = pbufs_malloc(conf.pqueue_len, mtu);
+    if (pbufs == NULL)
         runtime_exception("unable to allocate memory for packet buffers");
+
+    memset(&mitm_desc, 0, sizeof (mitm_desc));
+
+    mitm_desc[NET].fd_recv = netif_recv;
+    mitm_desc[NET].fd_send = netif_send;
+    mitm_desc[TUN].fd_recv = tunif_recv;
+    mitm_desc[TUN].fd_send = tunif_send;
 
     for (i = 0; i < 2; ++i)
     {
-        mitm_desc[i].pqueue = queue_malloc(pkts);
+        mitm_desc[i].pqueue = queue_malloc(pbufs);
         if (mitm_desc[i].pqueue == NULL)
             runtime_exception("unable to allocate memory for packet queues");
 
-        mitm_desc[i].pbuf_send = NULL;
-        mitm_desc[i].mitm_bufferevent = NULL;
-
         for (j = 0; j < 3; ++j)
-        {
-            if (j < 2)
-                mitm_desc[i].pbuf_recv[j] = NULL;
-
             mitm_desc[i].fd[j] = -1;
-        }
     }
 }
 
@@ -536,11 +530,11 @@ void JANUS_Init(void)
 
 void JANUS_EventLoop(void)
 {
-    struct event_base *ev_base = event_init();
+    struct event_base * const ev_base = event_init();
 
     uint8_t i;
 
-    for (i = 0; i < 2; i++)
+    for (i = 0; i < 2; ++i)
     {
         event_set(&mitm_desc[i].ev_send, mitm_desc[i].fd[FDIF], EV_WRITE | EV_PERSIST, send_cb, &mitm_desc[i]);
         event_set(&mitm_desc[i].ev_recv[FDIF], mitm_desc[i].fd[FDIF], EV_READ | EV_PERSIST, recv_cb, &mitm_desc[i]);
@@ -562,34 +556,22 @@ void JANUS_Reset(void)
     for (i = 10; i < 15; ++i)
         cmd[i](NULL, 0);
 
-    if (capnet != NULL)
-    {
-        pcap_close(capnet);
-        capnet = NULL;
-    }
+    J_PCAP_CLOSE(&capnet);
 
     for (i = 0; i < 2; ++i)
     {
         queue_reset(mitm_desc[i].pqueue);
 
-        mitm_desc[i].pbuf_send = NULL;
+        J_PBUF_RELEASE(&mitm_desc[i].pbuf_send);
 
-        if (mitm_desc[i].mitm_bufferevent != NULL)
-        {
-            bufferevent_free(mitm_desc[i].mitm_bufferevent);
-            mitm_desc[i].mitm_bufferevent = NULL;
-        }
+        J_BUFFEREVENT_FREE(&mitm_desc[i].mitm_bufferevent);
 
         for (j = 0; j < 3; ++j)
         {
             if (j < 2)
-                mitm_desc[i].pbuf_recv[j] = NULL;
+                J_PBUF_RELEASE(&mitm_desc[i].pbuf_recv[j]);
 
-            if (mitm_desc[i].fd[j] != -1)
-            {
-                close(mitm_desc[i].fd[j]);
-                mitm_desc[i].fd[j] = -1;
-            }
+            J_CLOSE(&mitm_desc[i].fd[j]);
         }
     }
 }
@@ -601,7 +583,7 @@ void JANUS_Shutdown(void)
     for (i = 0; i < 2; ++i)
         queue_free(mitm_desc[i].pqueue);
 
-    pbufs_free(pkts);
+    pbufs_free(pbufs);
 
     free(macpkt);
 }

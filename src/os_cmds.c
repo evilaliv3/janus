@@ -59,7 +59,7 @@ static void execOSCmd(char *buf, size_t bufsize, const char *format, ...)
 
 static void (*bindCmd(struct cmd_sw cmd[]))(char* buf, size_t bufsize)
 {
-    char test[CONST_JANUS_BUFSIZE];
+    char test[CONST_JANUS_BUFSIZE] = {0};
 
     uint8_t i = 0;
     while (cmd[i].cmd_test != NULL)
