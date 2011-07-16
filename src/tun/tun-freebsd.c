@@ -38,7 +38,7 @@ int tun_open(char *namebuf, size_t namebufsize)
 
     for (i = 0; i <= N; i++)
     {
-        snprintf(namebuf, sizeof(namebuf), "/dev/tun%d", i);
+        snprintf(namebuf, sizeof (namebuf), "/dev/tun%d", i);
 
         if ((tun = open(namebuf, O_RDWR)) != -1)
             break;
