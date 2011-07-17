@@ -436,11 +436,14 @@ void JANUS_Bootstrap(void)
     memcpy(netif_send_hdr, mac, ETH_ALEN);
     memcpy(&netif_recv_hdr[ETH_ALEN], mac, ETH_ALEN);
 
-    memcpy(macpkt, netif_send_hdr, ETH_HLEN);
+    *(uint16_t *)&netif_send_hdr[2 * ETH_ALEN] = htons(ETH_P_IP);
+    *(uint16_t *)&netif_recv_hdr[2 * ETH_ALEN] = htons(ETH_P_IP);
 
     macpkt = malloc(ETH_HLEN + atoi(str[STR_NET_MTU]));
     if (macpkt == NULL)
         runtime_exception("unable to allocate memory for the datalink packet buffer");
+
+    memcpy(macpkt, netif_send_hdr, ETH_HLEN);
 
     pbufs = pbufs_malloc(conf.pqueue_len, atoi(str[STR_NET_MTU]));
     if (pbufs == NULL)
