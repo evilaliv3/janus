@@ -44,24 +44,24 @@
 #include "packet_queue.h"
 
 #ifndef ETH_HLEN
-#define ETH_HLEN    14
+#define ETH_HLEN              14
 #endif
 
 #ifndef ETH_ALEN
-#define ETH_ALEN     6
+#define ETH_ALEN              6
 #endif
 
 #ifndef ETH_P_IP
-#define ETH_P_IP     0x0800
+#define ETH_P_IP              0x0800
 #endif
 
-#define J_CLOSE(p)             if (*p != -1) {close(*p); *p = -1; }
-#define J_PCAP_CLOSE(p)        if (*p != NULL) {pcap_close(*p); *p = NULL; }
-#define J_BUFFEREVENT_FREE(p)  if (*p != NULL) {bufferevent_free(*p); *p = NULL; }
-#define J_PBUF_RELEASE(p)      if (*p != NULL) { *p = NULL; }
+#define J_CLOSE(p)            if (*p != -1) { close(*p); *p = -1; }
+#define J_PCAP_CLOSE(p)       if (*p != NULL) { pcap_close(*p); *p = NULL; }
+#define J_BUFFEREVENT_FREE(p) if (*p != NULL) { bufferevent_free(*p); *p = NULL; }
+#define J_PBUF_RELEASE(p)     if (*p != NULL) { *p = NULL; }
 
-#define NET     0
-#define TUN     1
+#define NET                   0
+#define TUN                   1
 
 enum mitm_t
 {
@@ -436,14 +436,11 @@ void JANUS_Bootstrap(void)
     memcpy(netif_send_hdr, mac, ETH_ALEN);
     memcpy(&netif_recv_hdr[ETH_ALEN], mac, ETH_ALEN);
 
+    memcpy(macpkt, netif_send_hdr, ETH_HLEN);
+
     macpkt = malloc(ETH_HLEN + atoi(str[STR_NET_MTU]));
     if (macpkt == NULL)
         runtime_exception("unable to allocate memory for the datalink packet buffer");
-
-    *(uint16_t *)&netif_send_hdr[2 * ETH_ALEN] = htons(ETH_P_IP);
-    *(uint16_t *)&netif_recv_hdr[2 * ETH_ALEN] = htons(ETH_P_IP);
-
-    memcpy(macpkt, netif_send_hdr, ETH_HLEN);
 
     pbufs = pbufs_malloc(conf.pqueue_len, atoi(str[STR_NET_MTU]));
     if (pbufs == NULL)
