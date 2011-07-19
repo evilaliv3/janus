@@ -14,12 +14,11 @@ Janus overrides the actual routing table, creating a fake gateway with the aim t
     root@linux# route -n
     Kernel IP routing table
     Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
-    94.23.192.28    10.196.136.1    255.255.255.255 UGH   0      0        0 eth0
-    94.228.214.57   10.196.135.1    255.255.255.255 UGH   0      0        0 eth1
+    0.0.0.0         10.196.136.1    0.0.0.0         UG    0      0        0 eth0
     10.196.135.0    0.0.0.0         255.255.255.0   U     0      0        0 eth0
     10.196.136.0    0.0.0.0         255.255.255.0   U     0      0        0 eth1
-    0.0.0.0         10.196.136.1    0.0.0.0         UG    0      0        0 eth0
-
+    94.23.192.28    10.196.136.1    255.255.255.255 UGH   0      0        0 eth0
+    94.228.214.57   10.196.135.1    255.255.255.255 UGH   0      0        0 eth1
 
 #Example of Janus usage:
     root@linux# janus
@@ -28,12 +27,12 @@ Janus overrides the actual routing table, creating a fake gateway with the aim t
     root@linux# route -n
     Kernel IP routing table
     Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
-    94.23.192.28    10.196.135.1    255.255.255.255 UGH   0      0        0 eth0
-    94.228.214.57   10.196.136.1    255.255.255.255 UGH   0      0        0 eth1
+    0.0.0.0         212.77.1.1      0.0.0.0         UG    0      0        0 tun0
     10.196.135.0    0.0.0.0         255.255.255.0   U     0      0        0 eth0
     10.196.136.0    0.0.0.0         255.255.255.0   U     0      0        0 eth1
+    94.23.192.28    10.196.135.1    255.255.255.255 UGH   0      0        0 eth0
+    94.228.214.57   10.196.136.1    255.255.255.255 UGH   0      0        0 eth1
     212.77.1.1      0.0.0.0         255.255.255.255 UH    0      0        0 tun0
-    0.0.0.0         212.77.1.1      0.0.0.0         UG    0      0        0 tun0
 
 ## Client POC
 
