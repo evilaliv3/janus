@@ -72,6 +72,7 @@ enum mitm_t
 
 struct janus_config conf;
 
+static uint16_t pbuf_len;
 static struct packets *pbufs;
 
 static pcap_t *capnet;
@@ -79,8 +80,8 @@ static char *macpkt;
 
 static char str[STRINGS_NUM][CONST_JANUS_BUFSIZE];
 
-static uint8_t netif_send_hdr[ETH_HLEN];
-static uint8_t netif_recv_hdr[ETH_HLEN];
+static char netif_send_hdr[ETH_HLEN];
+static char netif_recv_hdr[ETH_HLEN];
 
 struct mitm_descriptor
 {
@@ -128,6 +129,15 @@ static void setflflag(int fd, long flags)
         runtime_exception("unable to set fl flags %u on fd %u (F_GETFL/F_SETFL)", fd, flags);
 }
 
+static void parseMAC(const char* str, char* buf)
+{
+    uint8_t i;
+    uint32_t tmp_mac[ETH_ALEN];
+    sscanf(str, "%02x:%02x:%02x:%02x:%02x:%02x", &tmp_mac[0], &tmp_mac[1], &tmp_mac[2], &tmp_mac[3], &tmp_mac[4], &tmp_mac[5]);
+    for (i = 0; i < ETH_ALEN; ++i)
+        buf[i] = tmp_mac[i];
+}
+
 static struct packet* bufferedRead(struct mitm_descriptor* desc)
 {
     return queue_pop_front(desc->pqueue, &desc->pbuf_send);
@@ -160,11 +170,10 @@ static ssize_t netif_recv(int sockfd, struct packet* pbuf)
 
     if ((packet != NULL) && !memcmp(packet, netif_recv_hdr, ETH_HLEN))
     {
-        uint16_t mtu = atoi(str[STR_NET_MTU]);
         uint32_t len = header.len - ETH_HLEN;
-        len = (len > mtu) ? mtu : len;
+        len = (len > pbuf_len) ? pbuf_len : len;
         memcpy(pbuf->buf, packet + ETH_HLEN, len);
-        return header.len - ETH_HLEN;
+        return len;
     }
 
     errno = EAGAIN;
@@ -183,7 +192,7 @@ static ssize_t netif_send(int sockfd, struct packet* pbuf)
 
 static ssize_t tunif_recv(int sockfd, struct packet* pbuf)
 {
-    return read(sockfd, pbuf->buf, atoi(str[STR_NET_MTU]));
+    return read(sockfd, pbuf->buf, pbuf_len);
 }
 
 static ssize_t tunif_send(int sockfd, struct packet* pbuf)
@@ -374,10 +383,10 @@ static int setupMitmAttach(uint16_t port)
 
 void JANUS_Bootstrap(void)
 {
-    uint8_t mac[ETH_ALEN];
-    uint32_t tmp_mac[ETH_ALEN];
-
     uint8_t i, j;
+
+    char mac[ETH_ALEN];
+    uint32_t tmp_mac[ETH_ALEN];
 
     for (i = 0; i < STRINGS_NUM; i++)
         str[i][0] = '\0';
@@ -422,32 +431,26 @@ void JANUS_Bootstrap(void)
 
     capnet = NULL;
 
-    sscanf(str[STR_NET_MAC], "%02x:%02x:%02x:%02x:%02x:%02x", &tmp_mac[0], &tmp_mac[1], &tmp_mac[2], &tmp_mac[3], &tmp_mac[4], &tmp_mac[5]);
-    for (i = 0; i < ETH_ALEN; ++i)
-        mac[i] = tmp_mac[i];
+    parseMAC(str[STR_GW_MAC], netif_send_hdr);
+    parseMAC(str[STR_NET_MAC], &netif_send_hdr[ETH_ALEN]);
 
-    memcpy(netif_recv_hdr, mac, ETH_ALEN);
-    memcpy(&netif_send_hdr[ETH_ALEN], mac, ETH_ALEN);
-
-    sscanf(str[STR_GW_MAC], "%02x:%02x:%02x:%02x:%02x:%02x", &tmp_mac[0], &tmp_mac[1], &tmp_mac[2], &tmp_mac[3], &tmp_mac[4], &tmp_mac[5]);
-    for (i = 0; i < ETH_ALEN; ++i)
-        mac[i] = tmp_mac[i];
-
-    memcpy(netif_send_hdr, mac, ETH_ALEN);
-    memcpy(&netif_recv_hdr[ETH_ALEN], mac, ETH_ALEN);
+    memcpy(netif_recv_hdr, &netif_send_hdr[ETH_ALEN], ETH_ALEN);
+    memcpy(&netif_recv_hdr[ETH_ALEN], netif_send_hdr, ETH_ALEN);
 
     *(uint16_t *)&netif_send_hdr[2 * ETH_ALEN] = htons(ETH_P_IP);
     *(uint16_t *)&netif_recv_hdr[2 * ETH_ALEN] = htons(ETH_P_IP);
 
-    macpkt = malloc(ETH_HLEN + atoi(str[STR_NET_MTU]));
+    pbuf_len = atoi(str[STR_NET_MTU]);
+
+    pbufs = pbufs_malloc(conf.pqueue_len, pbuf_len);
+    if (pbufs == NULL)
+        runtime_exception("unable to allocate memory for packet buffers");
+
+    macpkt = malloc(pbuf_len);
     if (macpkt == NULL)
         runtime_exception("unable to allocate memory for the datalink packet buffer");
 
     memcpy(macpkt, netif_send_hdr, ETH_HLEN);
-
-    pbufs = pbufs_malloc(conf.pqueue_len, atoi(str[STR_NET_MTU]));
-    if (pbufs == NULL)
-        runtime_exception("unable to allocate memory for packet buffers");
 
     memset(&mitm_desc, 0, sizeof (mitm_desc));
 
