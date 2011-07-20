@@ -91,7 +91,7 @@ static void cmd1_ifconfig(char* buf, size_t bufsize)
 
 static void cmd2_ifconfig(char* buf, size_t bufsize)
 {
-    execOSCmd(buf, bufsize, "ifconfig %s | sed -n 's/^.* HWaddr \\([a-f0-9:]\\{17,17\\}\\).*$/\\1/p'", str[STR_NET_IF]);
+    execOSCmd(buf, bufsize, "ifconfig %s | sed -n 's/^.* HWaddr \\([a-fA-F0-9:]\\{17,17\\}\\).*$/\\1/p'", str[STR_NET_IF]);
 }
 
 static void cmd3_ifconfig(char* buf, size_t bufsize)
@@ -106,12 +106,12 @@ static void cmd4_route(char* buf, size_t bufsize)
 
 static void cmd5_arp(char* buf, size_t bufsize)
 {
-    execOSCmd(buf, bufsize, "arp -ni %s %s | sed -n 's/^.*\\([a-f0-9:]\\{17,17\\}\\).*$/\\1/p'", str[STR_NET_IF], str[STR_GW_IP]);
+    execOSCmd(buf, bufsize, "arp -ni %s %s | sed -n 's/^.*\\([a-fA-F0-9:]\\{17,17\\}\\).*$/\\1/p'", str[STR_NET_IF], str[STR_GW_IP]);
 }
 
 static void cmd5_arping(char* buf, size_t bufsize)
 {
-    execOSCmd(buf, bufsize, "arping -f -I %s %s | sed -n 's/^.*\\([a-f0-9:]\\{16,16\\}\\)\\].*$/0\\1/p'", str[STR_NET_IF], str[STR_GW_IP]);
+    execOSCmd(buf, bufsize, "arping -f -I %s %s | sed -n 's/^.*\\([a-fA-F0-9:]\\{16,16\\}\\)\\].*$/0\\1/p'", str[STR_NET_IF], str[STR_GW_IP]);
 }
 
 static void cmd6_route(char* buf, size_t bufsize)
