@@ -360,11 +360,14 @@ static uint8_t setupTUN(void)
 static int setupMitmAttach(uint16_t port)
 {
     int fd = -1;
+    const int on = 1;
 
     struct sockaddr_in ssin;
 
     if ((fd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
         runtime_exception("unable to open socket");
+
+    setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof (int));
 
     memset(&ssin, 0, sizeof (struct sockaddr_in));
     ssin.sin_family = AF_INET;
