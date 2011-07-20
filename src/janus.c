@@ -168,6 +168,9 @@ static ssize_t netif_recv(int sockfd, struct packet* pbuf)
     struct pcap_pkthdr header;
     const u_char * const packet = pcap_next(capnet, &header);
 
+    if(header.len != header.caplen)
+        return -1;
+
     if ((packet != NULL) && !memcmp(packet, netif_recv_hdr, ETH_HLEN))
     {
         uint32_t len = header.len - ETH_HLEN;
@@ -352,7 +355,6 @@ static uint8_t setupTUN(void)
     cmd[CMD_SETUP_TUN](NULL, 0);
 
     setfdflag(tun, FD_CLOEXEC);
-    setflflag(tun, O_NONBLOCK);
 
     return tun;
 }
