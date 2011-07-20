@@ -388,9 +388,6 @@ void JANUS_Bootstrap(void)
 {
     uint8_t i, j;
 
-    char mac[ETH_ALEN];
-    uint32_t tmp_mac[ETH_ALEN];
-
     for (i = 0; i < STRINGS_NUM; i++)
         str[i][0] = '\0';
 

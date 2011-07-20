@@ -36,10 +36,10 @@ CMAKE_COMMAND = /usr/bin/cmake
 RM = /usr/bin/cmake -E remove -f
 
 # The top-level source directory on which CMake was run.
-CMAKE_SOURCE_DIR = /home/evilaliv3/Desktop/a/janus
+CMAKE_SOURCE_DIR = /home/evilaliv3/Desktop/janus
 
 # The top-level build directory on which CMake was run.
-CMAKE_BINARY_DIR = /home/evilaliv3/Desktop/a/janus
+CMAKE_BINARY_DIR = /home/evilaliv3/Desktop/janus
 
 #=============================================================================
 # Targets provided globally by CMake.
@@ -107,14 +107,14 @@ rebuild_cache/fast: rebuild_cache
 
 # The main all target
 all: cmake_check_build_system
-	cd /home/evilaliv3/Desktop/a/janus && $(CMAKE_COMMAND) -E cmake_progress_start /home/evilaliv3/Desktop/a/janus/CMakeFiles /home/evilaliv3/Desktop/a/janus/src/CMakeFiles/progress.marks
-	cd /home/evilaliv3/Desktop/a/janus && $(MAKE) -f CMakeFiles/Makefile2 src/all
-	$(CMAKE_COMMAND) -E cmake_progress_start /home/evilaliv3/Desktop/a/janus/CMakeFiles 0
+	cd /home/evilaliv3/Desktop/janus && $(CMAKE_COMMAND) -E cmake_progress_start /home/evilaliv3/Desktop/janus/CMakeFiles /home/evilaliv3/Desktop/janus/src/CMakeFiles/progress.marks
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f CMakeFiles/Makefile2 src/all
+	$(CMAKE_COMMAND) -E cmake_progress_start /home/evilaliv3/Desktop/janus/CMakeFiles 0
 .PHONY : all
 
 # The main clean target
 clean:
-	cd /home/evilaliv3/Desktop/a/janus && $(MAKE) -f CMakeFiles/Makefile2 src/clean
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f CMakeFiles/Makefile2 src/clean
 .PHONY : clean
 
 # The main clean target
@@ -123,22 +123,22 @@ clean/fast: clean
 
 # Prepare targets for installation.
 preinstall: all
-	cd /home/evilaliv3/Desktop/a/janus && $(MAKE) -f CMakeFiles/Makefile2 src/preinstall
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f CMakeFiles/Makefile2 src/preinstall
 .PHONY : preinstall
 
 # Prepare targets for installation.
 preinstall/fast:
-	cd /home/evilaliv3/Desktop/a/janus && $(MAKE) -f CMakeFiles/Makefile2 src/preinstall
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f CMakeFiles/Makefile2 src/preinstall
 .PHONY : preinstall/fast
 
 # clear depends
 depend:
-	cd /home/evilaliv3/Desktop/a/janus && $(CMAKE_COMMAND) -H$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 1
+	cd /home/evilaliv3/Desktop/janus && $(CMAKE_COMMAND) -H$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 1
 .PHONY : depend
 
 # Convenience name for target.
 src/CMakeFiles/janus.dir/rule:
-	cd /home/evilaliv3/Desktop/a/janus && $(MAKE) -f CMakeFiles/Makefile2 src/CMakeFiles/janus.dir/rule
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f CMakeFiles/Makefile2 src/CMakeFiles/janus.dir/rule
 .PHONY : src/CMakeFiles/janus.dir/rule
 
 # Convenience name for target.
@@ -147,67 +147,67 @@ janus: src/CMakeFiles/janus.dir/rule
 
 # fast build rule for target.
 janus/fast:
-	cd /home/evilaliv3/Desktop/a/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/build
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/build
 .PHONY : janus/fast
 
 # target to build an object file
 janus.o:
-	cd /home/evilaliv3/Desktop/a/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/janus.o
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/janus.o
 .PHONY : janus.o
 
 # target to preprocess a source file
 janus.i:
-	cd /home/evilaliv3/Desktop/a/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/janus.i
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/janus.i
 .PHONY : janus.i
 
 # target to generate assembly for a file
 janus.s:
-	cd /home/evilaliv3/Desktop/a/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/janus.s
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/janus.s
 .PHONY : janus.s
 
 # target to build an object file
 main.o:
-	cd /home/evilaliv3/Desktop/a/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/main.o
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/main.o
 .PHONY : main.o
 
 # target to preprocess a source file
 main.i:
-	cd /home/evilaliv3/Desktop/a/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/main.i
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/main.i
 .PHONY : main.i
 
 # target to generate assembly for a file
 main.s:
-	cd /home/evilaliv3/Desktop/a/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/main.s
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/main.s
 .PHONY : main.s
 
 # target to build an object file
 packet_queue.o:
-	cd /home/evilaliv3/Desktop/a/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/packet_queue.o
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/packet_queue.o
 .PHONY : packet_queue.o
 
 # target to preprocess a source file
 packet_queue.i:
-	cd /home/evilaliv3/Desktop/a/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/packet_queue.i
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/packet_queue.i
 .PHONY : packet_queue.i
 
 # target to generate assembly for a file
 packet_queue.s:
-	cd /home/evilaliv3/Desktop/a/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/packet_queue.s
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/packet_queue.s
 .PHONY : packet_queue.s
 
 # target to build an object file
 tun/tun-linux.o:
-	cd /home/evilaliv3/Desktop/a/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/tun/tun-linux.o
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/tun/tun-linux.o
 .PHONY : tun/tun-linux.o
 
 # target to preprocess a source file
 tun/tun-linux.i:
-	cd /home/evilaliv3/Desktop/a/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/tun/tun-linux.i
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/tun/tun-linux.i
 .PHONY : tun/tun-linux.i
 
 # target to generate assembly for a file
 tun/tun-linux.s:
-	cd /home/evilaliv3/Desktop/a/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/tun/tun-linux.s
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/tun/tun-linux.s
 .PHONY : tun/tun-linux.s
 
 # Help Target
@@ -246,6 +246,6 @@ help:
 # No rule that depends on this can have commands that come from listfiles
 # because they might be regenerated.
 cmake_check_build_system:
-	cd /home/evilaliv3/Desktop/a/janus && $(CMAKE_COMMAND) -H$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 0
+	cd /home/evilaliv3/Desktop/janus && $(CMAKE_COMMAND) -H$(CMAKE_SOURCE_DIR) -B$(CMAKE_BINARY_DIR) --check-build-system CMakeFiles/Makefile.cmake 0
 .PHONY : cmake_check_build_system
 
