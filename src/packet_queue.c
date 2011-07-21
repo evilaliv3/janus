@@ -69,7 +69,7 @@ struct packets* pbufs_malloc(uint16_t pkts_num, uint16_t pkts_size)
     return pkts;
 }
 
-void pbufs_free(struct packets* pkts)
+void pbufs_free(struct packets *pkts)
 {
     queue_free(pkts->free_packets);
     free(pkts->pmemory);
@@ -83,12 +83,12 @@ struct packet* pbuf_acquire(struct packets* pkts)
     return queue_pop_front(pkts->free_packets, &ret);
 }
 
-void pbuf_release(struct packets* pkts, struct packet* pkt)
+void pbuf_release(struct packets *pkts, struct packet *pkt)
 {
     queue_push_back(pkts->free_packets, pkt);
 }
 
-struct packet_queue* queue_malloc(struct packets* pkts)
+struct packet_queue* queue_malloc(struct packets *pkts)
 {
     struct packet_queue* pq = malloc(sizeof (struct packet_queue));
     if (pq == NULL)

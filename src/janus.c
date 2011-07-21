@@ -58,7 +58,7 @@
 #define J_CLOSE(p)            if (*p != -1) { close(*p); *p = -1; }
 #define J_PCAP_CLOSE(p)       if (*p != NULL) { pcap_close(*p); *p = NULL; }
 #define J_BUFFEREVENT_FREE(p) if (*p != NULL) { bufferevent_free(*p); *p = NULL; }
-#define J_PBUF_RELEASE(p)     if (*p != NULL) { *p = NULL; }
+#define J_PBUF_RELEASE(p)     if (*p != NULL) { pbuf_release(pbufs, *p); *p = NULL; }
 
 #define NET                   0
 #define TUN                   1
@@ -71,6 +71,8 @@ enum mitm_t
 };
 
 struct janus_config conf;
+
+struct event_base *ev_base;
 
 static uint16_t pbuf_len;
 static struct packets *pbufs;
@@ -129,7 +131,7 @@ static void setflflag(int fd, long flags)
         runtime_exception("unable to set fl flags %u on fd %u (F_GETFL/F_SETFL)", fd, flags);
 }
 
-static void parseMAC(const char* str, char* buf)
+static void parseMAC(const char *str, char *buf)
 {
     uint8_t i;
     uint32_t tmp_mac[ETH_ALEN];
@@ -138,12 +140,12 @@ static void parseMAC(const char* str, char* buf)
         buf[i] = tmp_mac[i];
 }
 
-static struct packet* bufferedRead(struct mitm_descriptor* desc)
+static struct packet* bufferedRead(struct mitm_descriptor *desc)
 {
     return queue_pop_front(desc->pqueue, &desc->pbuf_send);
 }
 
-static void bufferedWrite(struct mitm_descriptor* desc, enum mitm_t i, struct packet *pbuf)
+static void bufferedWrite(struct mitm_descriptor *desc, enum mitm_t i, struct packet *pbuf)
 {
     struct mitm_descriptor * const target = desc->target;
 
@@ -163,12 +165,12 @@ static void bufferedWrite(struct mitm_descriptor* desc, enum mitm_t i, struct pa
     }
 }
 
-static ssize_t netif_recv(int sockfd, struct packet* pbuf)
+static ssize_t netif_recv(int sockfd, struct packet *pbuf)
 {
     struct pcap_pkthdr header;
     const u_char * const packet = pcap_next(capnet, &header);
 
-    if(header.len != header.caplen)
+    if (header.len != header.caplen)
         return -1;
 
     if ((packet != NULL) && !memcmp(packet, netif_recv_hdr, ETH_HLEN))
@@ -183,7 +185,7 @@ static ssize_t netif_recv(int sockfd, struct packet* pbuf)
     return -1;
 }
 
-static ssize_t netif_send(int sockfd, struct packet* pbuf)
+static ssize_t netif_send(int sockfd, struct packet *pbuf)
 {
     memcpy(&macpkt[ETH_HLEN], pbuf->buf, pbuf->size);
 
@@ -193,12 +195,12 @@ static ssize_t netif_send(int sockfd, struct packet* pbuf)
         return -1;
 }
 
-static ssize_t tunif_recv(int sockfd, struct packet* pbuf)
+static ssize_t tunif_recv(int sockfd, struct packet *pbuf)
 {
     return read(sockfd, pbuf->buf, pbuf_len);
 }
 
-static ssize_t tunif_send(int sockfd, struct packet* pbuf)
+static ssize_t tunif_send(int sockfd, struct packet *pbuf)
 {
     return write(sockfd, pbuf->buf, pbuf->size);
 }
@@ -474,6 +476,8 @@ void JANUS_Bootstrap(void)
 
 void JANUS_Init(void)
 {
+    ev_base = event_init();
+
     mitm_desc[NET].fd[FDIF] = setupNET();
     mitm_desc[NET].fd[FDMITMATTACH] = setupMitmAttach(conf.listen_port_in);
     mitm_desc[NET].target = &mitm_desc[TUN];
@@ -491,7 +495,7 @@ void JANUS_Init(void)
 
 void JANUS_EventLoop(void)
 {
-    struct event_base * const ev_base = event_init();
+    ev_base = event_init();
 
     uint8_t i;
 
@@ -506,8 +510,6 @@ void JANUS_EventLoop(void)
     }
 
     event_dispatch();
-
-    event_base_free(ev_base);
 }
 
 void JANUS_Reset(void)
@@ -538,6 +540,8 @@ void JANUS_Reset(void)
             J_CLOSE(&mitm_desc[i].fd[j]);
         }
     }
+
+    event_base_free(ev_base);
 }
 
 void JANUS_Shutdown(void)
