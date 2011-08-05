@@ -21,15 +21,20 @@ The options usefull when Janus is started are:
 .PP
 .SH JANUS OPTIONS 
 .PP
-.B --net <ip/mask> [default: 0.0.0.0/0.0.0.0]
-.PP
-.B --listen-ip-addres <ip> [default: 127.0.0.1]
+.B --listen-ip <ip> [default: 127.0.0.1]
+set the listen ip address
 .PP
 .B --listen-port-in <port> [default: 30201]
+set the listen port for incoming traffic
 .PP
 .B --listen-port-out <port> [default: 10203]
+set the listen port for outgoing traffic
 .PP
 .B --pqueue-len <len> [default: 32]
+set tha internal packet queue length
+.PP
+.B --mtu-fix <len> [default: 0]
+set the tunnel mtu difference with respect to real interface
 .PP
 .B --foreground
 start Janus in foreground mode
