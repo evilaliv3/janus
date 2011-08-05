@@ -28,9 +28,10 @@
 #define STR_NET_MTU 3
 #define STR_TUN_IF  4
 #define STR_TUN_IP  5
-#define STR_GW_MAC  6
-#define STR_GW_IP   7
-#define STRINGS_NUM 8
+#define STR_TUN_MTU 6
+#define STR_GW_MAC  7
+#define STR_GW_IP   8
+#define STRINGS_NUM 9
 
 struct strings_map
 {
@@ -43,6 +44,7 @@ struct strings_map
     {"NET_MTU", STR_NET_MTU},
     {"TUN_IF", STR_TUN_IF},
     {"TUN_IP", STR_TUN_IP},
+    {"TUN_MAC", STR_TUN_MTU},
     {"GW_MAC", STR_GW_MAC},
     {"GW_IP", STR_GW_IP},
     {"STRINGS_NUM", 0},

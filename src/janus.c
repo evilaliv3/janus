@@ -421,6 +421,13 @@ void JANUS_Bootstrap(void)
 
     printf("detected default gateway MTU: [%s]\n", str[STR_NET_MTU]);
 
+    if(atoi(str[STR_NET_MTU]) + conf.mtu_fix < 0)
+        runtime_exception("cannot apply the specified fix of %d bytes", conf.mtu_fix);
+
+    snprintf(str[STR_TUN_MTU], sizeof (str[STR_TUN_MTU]), "%u", atoi(str[STR_NET_MTU]) + conf.mtu_fix);
+
+    printf("applied the mtu fix for tunnel interface: [%d]\n", conf.mtu_fix);
+
     cmd[CMD_GET_GWIP](str[STR_GW_IP], sizeof (str[STR_GW_IP]));
     if (!strlen(str[STR_GW_IP]))
         runtime_exception("unable to detect default gateway ip address");
@@ -495,9 +502,9 @@ void JANUS_Init(void)
 
 void JANUS_EventLoop(void)
 {
-    ev_base = event_init();
-
     uint8_t i;
+
+    ev_base = event_init();
 
     for (i = 0; i < 2; ++i)
     {

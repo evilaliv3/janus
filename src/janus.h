@@ -30,6 +30,7 @@
 #define CONST_JANUS_LISTEN_PORT_OUT 10203
 #define CONST_JANUS_BUFSIZE         512
 #define CONST_JANUS_PQUEUE_LEN      32
+#define CONST_JANUS_MTU_FIX         0
 #define REGEXP_IPV4                 "([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})"
 #define REGEXP_HOST                 "^"REGEXP_IPV4"$"
 
@@ -39,6 +40,7 @@ struct janus_config
     uint16_t listen_port_in;
     uint16_t listen_port_out;
     uint16_t pqueue_len;
+    int16_t mtu_fix;
 };
 
 void JANUS_Bootstrap(void);

@@ -166,7 +166,7 @@ static void cmd15_iptables(char* buf, size_t bufsize)
 
 static void cmd16_ifconfig(char* buf, size_t bufsize)
 {
-    execOSCmd(NULL, 0, "ifconfig %s %s pointopoint %s mtu %s", str[STR_TUN_IF], str[STR_NET_IP], str[STR_TUN_IP], str[STR_NET_MTU]);
+    execOSCmd(NULL, 0, "ifconfig %s %s pointopoint %s mtu %s", str[STR_TUN_IF], str[STR_NET_IP], str[STR_TUN_IP], str[STR_TUN_MTU]);
 }
 
 static struct cmd_sw cmd0_sw[] = {
