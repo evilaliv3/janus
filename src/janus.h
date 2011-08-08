@@ -24,8 +24,13 @@
 
 #define CONST_JANUS_VERSION         "0.1"
 #define CONST_JANUS_IFNAME          "janus"
-#define CONST_JANUS_LISTEN_IP       "127.0.0.1"
+#define CONST_JANUS_WEBSITE         "http://github.com/evilaliv3/janus"
+
 #define CONST_JANUS_FAKEGW_IP       "212.77.1.1"
+/* 212.77.1.1: vatican network: janus reserve some right to choose a routing
+ * blackhole. In short, wanna cut out bigots hackah. */
+#define CONST_JANUS_LISTEN_IP       "127.0.0.1"
+
 #define CONST_JANUS_LISTEN_PORT_IN  30201
 #define CONST_JANUS_LISTEN_PORT_OUT 10203
 #define CONST_JANUS_BUFSIZE         512
@@ -34,8 +39,14 @@
 #define REGEXP_IPV4                 "([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})\\.([0-9]{1,3})"
 #define REGEXP_HOST                 "^"REGEXP_IPV4"$"
 
+#define JANUS_BANNER                " Janus-"CONST_JANUS_VERSION" "CONST_JANUS_WEBSITE" "
+#define CONST_JANUS_BANNER_LENGTH   sizeof(JANUS_BANNER)
+
 struct janus_config
 {
+    /* why a banner is required, is explained in mitmattach_cb */
+    char hex_banner_len[2];
+    char banner [CONST_JANUS_BANNER_LENGTH];
     char listen_ip [CONST_JANUS_BUFSIZE];
     uint16_t listen_port_in;
     uint16_t listen_port_out;

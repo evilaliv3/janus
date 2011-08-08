@@ -307,10 +307,24 @@ static void mitm_rs_error_cb(struct bufferevent *sabe, short what, void *arg)
 static void mitmattach_cb(int f, short event, void *arg)
 {
     struct mitm_descriptor * const desc = arg;
+    static uint8_t needtodone = 1;
 
     desc->fd[FDMITM] = accept(desc->fd[FDMITMATTACH], NULL, NULL);
     if (desc->fd[FDMITM] != -1)
     {
+        if(needtodone)
+        {
+            /* the first time a socket is attached, a struct with the collected info
+             * is sent to the client, for this reason the banner is put on the head of
+             * the configuration struct.
+             *
+             * Why has been done ? 
+             * because, will happen too often to telnet to a local port. iz nice get info :) 
+             */
+            write(desc->fd[FDMITM], (void *)&conf, sizeof(conf));
+            needtodone--;
+        }
+    
         event_del(&desc->ev_recv[FDMITMATTACH]);
         setfdflag(desc->fd[FDMITM], FD_CLOEXEC);
         setflflag(desc->fd[FDMITM], O_NONBLOCK);

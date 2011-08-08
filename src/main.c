@@ -110,9 +110,32 @@ uint8_t validate(const char *string, char *pattern)
     return 0;
 }
 
+void do_background(void)
+{
+    int i;
+
+    printf("Janus is now going in foreground, use SIGTERM to stop it.\n");
+
+    if (fork())
+        exit(0);
+
+    setsid();
+
+    for (i = getdtablesize(); i >= 0; --i)
+        close(i);
+
+    if ((i = open("/dev/null", O_RDWR)) != 0 || dup(i) != 1 || dup(i) != 2)
+    {
+        printf("error while closing stdin, stdout and stderr\n");
+        exit(1);
+    }
+}
+
 int main(int argc, char **argv)
 {
     uint8_t foreground = 0;
+    /* useful in the handling of the 'm' option */
+    int16_t mtu_boundary = (9000 - 1400);
 
     int charopt;
     int port;
@@ -129,6 +152,10 @@ int main(int argc, char **argv)
         { "help", no_argument, NULL, 'h'},
         { NULL, 0, NULL, 0}
     };
+
+    /* the banner in conf will be clear in janus.c:mitmattach_cb */
+    snprintf(conf.banner, CONST_JANUS_BANNER_LENGTH, "%s", JANUS_BANNER);
+    snprintf(conf.hex_banner_len, 2, "%c", CONST_JANUS_BANNER_LENGTH);
 
     snprintf(conf.listen_ip, sizeof (conf.listen_ip), "%s", CONST_JANUS_LISTEN_IP);
     conf.listen_port_in = CONST_JANUS_LISTEN_PORT_IN;
@@ -155,7 +182,7 @@ int main(int argc, char **argv)
                 conf.listen_port_in = (uint16_t) port;
             else
             {
-                printf("invalid port specified for listen_port_in param\n");
+                printf("invalid port specified for listen-port-in param\n");
                 exit(1);
             }
             break;
@@ -165,7 +192,7 @@ int main(int argc, char **argv)
                 conf.listen_port_out = (uint16_t) port;
             else
             {
-                printf("invalid port specified for listen_port_out param\n");
+                printf("invalid port specified for listen-port-out param\n");
                 exit(1);
             }
             break;
@@ -175,12 +202,17 @@ int main(int argc, char **argv)
                 conf.pqueue_len = (uint16_t) pqueue;
             else
             {
-                printf("invalid num specified for packet queue len param\n");
+                printf("invalid number specified for packet queue length param (0-64k)\n");
                 exit(1);
             }
             break;
         case 'm':
             conf.mtu_fix = atoi(optarg);
+            if( conf.mtu_fix < (-1 * mtu_boundary) || conf.mtu_fix > mtu_boundary )
+            {
+                printf("invalid MTU offset: (%u), boundary +-%u\n", conf.mtu_fix, mtu_boundary);
+                exit(1);
+            }
             break;
         case 'f':
             foreground = 1;
@@ -206,34 +238,22 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    if (!foreground)
-    {
-        int i;
-
-        printf("Janus is now going in foreground, use SIGTERM to stop it.\n");
-
-        if (fork())
-            exit(0);
-
-        setsid();
-
-        for (i = getdtablesize(); i >= 0; --i)
-            close(i);
-
-        if ((i = open("/dev/null", O_RDWR)) != 0 || dup(i) != 1 || dup(i) != 2)
-        {
-            printf("error while closing stdin, stdout and stderr\n");
-            exit(1);
-        }
-    }
+    /* because Janus change default gateway, create tunnel and goes background before doit,
+     * is safer print out the information taken by options & defaults, this is the reason
+     * because background check is provided after the bootstrap */
+    printf("Janus connection diverter is starting with the following parameters:\n");
+    printf(". connection is waiting in %s. port %u is serving incoming traffic, %u outgoing\n",
+            conf.listen_ip, conf.listen_port_in, conf.listen_port_out);
+    printf(". creating a fake default gateway to [%s]\n", CONST_JANUS_FAKEGW_IP);
 
     sigtrapSetup(handler_termination);
 
-    main_alive = 1;
+    if (!foreground)
+        do_background();
 
     JANUS_Bootstrap();
 
-    while (main_alive)
+    for ( main_alive = 1; main_alive ; )
     {
         JANUS_Init();
 
