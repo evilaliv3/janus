@@ -26,7 +26,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-
 #define STR_NET_IF  0
 #define STR_NET_IP  1
 #define STR_NET_MAC 2
@@ -84,33 +83,5 @@ static struct strings_map str_map [] = {
 #define CMD_DEL_TUN_MASQUERADE     15
 #define CMD_SETUP_TUN              16
 #define COMMANDS_NUM               17
-
-struct cmds_map
-{
-    char *cmd;
-    uint8_t index;
-};
-
-static struct cmds_map cmd_map [] = {
-    {"CMD_GET_NETIF", CMD_GET_NETIF},
-    {"CMD_GET_NETIP", CMD_GET_NETIP},
-    {"CMD_GET_NETMAC", CMD_GET_NETMAC},
-    {"CMD_GET_NETMTU", CMD_GET_NETMTU},
-    {"CMD_GET_GWIP", CMD_GET_GWIP},
-    {"CMD_GET_GWMAC", CMD_GET_GWMAC},
-    {"CMD_ADD_REAL_DEFAULT_ROUTE", CMD_ADD_REAL_DEFAULT_ROUTE},
-    {"CMD_DEL_REAL_DEFAULT_ROUTE", CMD_DEL_REAL_DEFAULT_ROUTE},
-    {"CMD_ADD_FAKE_DEFAULT_ROUTE", CMD_ADD_FAKE_DEFAULT_ROUTE},
-    {"CMD_DEL_FAKE_DEFAULT_ROUTE", CMD_DEL_FAKE_DEFAULT_ROUTE},
-    {"CMD_ADD_INCOMING_FILTER", CMD_ADD_INCOMING_FILTER},
-    {"CMD_DEL_INCOMING_FILTER", CMD_DEL_INCOMING_FILTER},
-    {"CMD_ADD_FORWARD_FILTER", CMD_ADD_FORWARD_FILTER},
-    {"CMD_DEL_FORWARD_FILTER", CMD_DEL_FORWARD_FILTER},
-    {"CMD_ADD_TUN_MASQUERADE", CMD_ADD_TUN_MASQUERADE},
-    {"CMD_DEL_TUN_MASQUERADE", CMD_DEL_TUN_MASQUERADE},
-    {"CMD_SETUP_TUN", CMD_SETUP_TUN},
-    {"COMMANDS_NUM", 0},
-    {NULL, 0}
-};
 
 #endif /* JANUS_CONFIG_MACROS_H */

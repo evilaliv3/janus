@@ -1,35 +1,36 @@
                 Be PORTABLE, in Janus is one of the primary goal.
                 Be PORTABLE, in Janus is one of the primary goal.
+                Be PORTABLE, in Janus is one of the primary goal.
 
-for this reason, this file has to explain to you, human trying to ports janus
-in your weird POSIX system, which requirement exists and how you could check 
-your issue.
+for this reason, this file has to explain to you, human trying to port Janus
+in your weird POSIX system, which requirements exist and how you could check 
+and solve your issues.
 
-Janus implement a lot of low level handling in the operating system, anyway
-these low level operation has been implemented as external command execution.
+Janus implements a lot of low level handling in the operating system, anyway
+these low level operations have been implemented through the use of external
+commands executions.
 
-thus, exist some command executed by janus, and, for someone wanna do a porting:
+thus, exist some command executed by Janus, and, for someone wanna do a port:
 
     MANDATORY IS CHECKING & EVENTUALLY REPLACING WHILE PORTING JANUS IN A 
                 NON-EXPLICITALLY-SUPPORTED ENVIRONMENT
 
-The commands are divided in two general section:
+The commands are divided in two general sections:
 
-informative commands: command that return a value, used by janus for get
+informative commands: command that return a value, used by Janus for get
                       system informations.
-                      during the janus execution, their results are 
-                      showed for the lanching user, for a better awarness
-                      about janus operations.
+                      during the Janus execution, their results are 
+                      showed for the launching user, for a better awarness
+                      about Janus operations.
 
 mandatory commands: command that execute a variation in the system, no
-                    return value are provided, anyway are checked by 
-                    janus if some data in the "standard error" file 
-                    description is present: in this case, is handled as
-                    error, and the users need to check by hand the 
-                    executed command. 
+                    return value is provided, anyway Janus checks if some
+                    data is present in the "standard error" file;
+                    Janus handles this case as a fatal error, and the users
+                    need to check by hand the executed command. 
 
 Handling an error of such will not be common for an user, but will be 
-the required effort for everyone wanning ports Janus.
+the required effort for everyone wanting to make a Janus port.
 
 command of informative type are:
 
@@ -51,15 +52,15 @@ C setup the $6
 D add a firewall rule able to NAT the traffic thru the tunnel $B
 E delete the firewall rule insert with $C
 
-evry one of this command will be composed by more command, with pipe,
-semicolons, logic AND, OR. In example, get the $1 to $6 will require
-the usage of command ifconfig, route, arp and parsing the output with
+everyone command could be a composed one using for example pipes,
+semicolons, logic AND, OR, et cetera. For example, get the $1 to $6 will
+require the usage of command ifconfig, route, arp and parsing the output with
 sed or awk. 
 
 Implementing a command $9 will require, in some system two different firewall 
 command (the first intended to drop incoming traffic destinated to the local box,
 the second to drop the same traffic that will be forwarded, in the case Janus is
- running in a network gateway)
+running in a network gateway)
 
             ************** commands file ****************
 
@@ -71,17 +72,17 @@ file named coherently, in /etc/janus
   Linux-whatever.janus is the configuration file containing the commands
   executed to obtain the required effect on the running system.
 
-By default janus take a look for "current-os", hopefully a symbolic link to the
+By default Janus take a look for "current-os", hopefully a symbolic link to the
 right file, otherwise will be specify with the option [XXX]
 
         ************** commands file format ****************
 
-The "current-os" file has three section, the first are related all the binary 
+The "current-os" file has three section, the first is related to all the binary 
 that need to be checked, and an email address/contact of the package mantainer 
-(hey, you, mantainer: keep your reponsability, if something don't run correctly, 
- accept to receive an email reporting the error)
+(hey, you, mantainer: keep your reponsability, if something doesn't run correctly, 
+accept to receive an email reporting the error)
 
-.. first section sound like:
+.. first section sounds like:
 
 N GNU/OSX+Vista I'm the OS's name here supported
 M SniffJoke team sniffjoke-team@delirandom.net
@@ -92,9 +93,9 @@ C grep
 [...]
 
 the "M" is the contact to address, the "C" is before every binary that need to 
-be checked by "which", if one of them don't exist in the system, is reported 
+be checked by "which", if one of them doesn't exist in the system, is reported 
 to the user, with the email to contact. the "N", is the OS's name in this file
-supported. Is a string printed at every Janus start.
+supported. Is a string printed at every Janus run.
 
 .. second section, the informative commands
 
@@ -103,12 +104,12 @@ I1 #route -n | grep "0.0.0.0" | awk {'print $5'}#
 What's does it mean:
 
   "I": is always present as first char in the informative section
-  "1": is the associate number of command, and number used for ask the ip address
-       of the default gateway as variable named "~1" in this file
+  "1": is the number assigned to the command, and number used for ask the ip
+       address of the default gateway as variable named "~1" in this file
   "#": the command executed is between the first # and the second #
 
-The command in this section is executed before every operation: their goal is
-collecting information over the system, therfore are executed and their output
+The commands in this section are executed before every operation: their goal is
+to collect informations over the system, therefore are executed and their output
 stored for the usage in the "mandatory commands"
 
 .. third section, mandatory commands
@@ -117,16 +118,17 @@ SC #iptables -A POSTROUTING -o ~1 -t nat -j MASQUERADE#
 SD #iptables -D POSTROUTING -o ~1 -t nat -j MASQUERADE#
 
    "S" stay for S. is used in the first line of the third section
-   "C" or "D" or "..." is the associate number. but, C and D are not a numbers !?
+   "C" or "D" or "..." is the number assigned to the command;
+       but, C and D arenot a numbers !?
        yep, I'm using hex, so until 16 commands and the letter "F" commands are
        numbered
-  "~1" using the tilde followed by a number, make janus import the variable 
+  "~1" using the tilde followed by a number, make Janus import the variable 
        associated with the number. "1" as described, is the interface name.
 
 This cause in short, that the reserved symbol are the "#" and the "~" and the 
 format required:
 
-1) N,M,C,I or S at the star of every commands line (permitted "\n" and ";" too)
+1) N,M,C,I or S at the start of every commands line (permitted "\n" and ";" too)
 2) only one command number in the 1st and 2nd sections
 3) supports for more that one command number in the 3rd section
 4) avoid to use char "#" and "~" in the command line
@@ -136,7 +138,7 @@ format required:
 7) there are two special variable (there indexed by "~"): ~K and ~Z.
    Z is the fake gateway ip address
    K is the fake MTU usable in the tunnel
-   these value are hardcoded/readed by option/computed inside janus, therefore
+   these value are hardcoded/readed by option/computed inside Janus, therefore
    are called by special parameters.
 
 the best way to write your own commands file, is take a look in those in 

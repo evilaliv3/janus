@@ -72,7 +72,7 @@ enum mitm_t
 
 struct janus_config conf;
 
-struct event_base *ev_base;
+static struct event_base *ev_base;
 
 static uint16_t pbuf_len;
 static struct packets *pbufs;
@@ -98,6 +98,8 @@ struct mitm_descriptor
     struct bufferevent * mitm_bufferevent; /* FDMITM */
 
     struct mitm_descriptor *target;
+
+    uint8_t first_mitm_connection;
 };
 
 static struct mitm_descriptor mitm_desc[2];
@@ -312,22 +314,21 @@ static void mitm_rs_error_cb(struct bufferevent *sabe, short what, void *arg)
 static void mitmattach_cb(int f, short event, void *arg)
 {
     struct mitm_descriptor * const desc = arg;
-    static uint8_t needtodone = 1;
 
     desc->fd[FDMITM] = accept(desc->fd[FDMITMATTACH], NULL, NULL);
     if (desc->fd[FDMITM] != -1)
     {
-        if(needtodone)
+        if(desc->first_mitm_connection)
         {
-            /* the first time a socket is attached, a struct with the collected info
+            /* the first time a socket is attached, a struct with the collected infos
              * is sent to the client, for this reason the banner is put on the head of
              * the configuration struct.
              *
              * Why has been done ? 
-             * because, will happen too often to telnet to a local port. iz nice get info :) 
+             * because, will happen too often to telnet to a local port. it's a nice to get info :)
              */
             write(desc->fd[FDMITM], (void *)&conf, sizeof(conf));
-            needtodone--;
+            desc->first_mitm_connection = 0;
         }
     
         event_del(&desc->ev_recv[FDMITMATTACH]);
@@ -501,6 +502,8 @@ void JANUS_Bootstrap(void)
 
         for (j = 0; j < 3; ++j)
             mitm_desc[i].fd[j] = -1;
+
+        mitm_desc[i].first_mitm_connection = 1;
     }
 }
 
@@ -569,6 +572,8 @@ void JANUS_Reset(void)
 
             J_CLOSE(&mitm_desc[i].fd[j]);
         }
+
+        mitm_desc[i].first_mitm_connection = 1;
     }
 
     event_base_free(ev_base);
