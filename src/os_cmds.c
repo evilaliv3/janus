@@ -20,6 +20,8 @@
  */
 
 #include "config_macros.h"
+#include "janus.h"
+#include "string.h"
 
 struct cmd_sw
 {
@@ -86,87 +88,87 @@ static void cmd0_route(char* buf, size_t bufsize)
 
 static void cmd1_ifconfig(char* buf, size_t bufsize)
 {
-    execOSCmd(buf, bufsize, "ifconfig %s | sed -n 's/.*inet addr:\\([0-9.]\\+\\) .*$/\\1/p'", str[STR_NET_IF]);
+    execOSCmd(buf, bufsize, "ifconfig %s | sed -n 's/.*inet addr:\\([0-9.]\\+\\) .*$/\\1/p'", str_map[STR_NET_IF]);
 }
 
 static void cmd2_ifconfig(char* buf, size_t bufsize)
 {
-    execOSCmd(buf, bufsize, "ifconfig %s | sed -n 's/^.* HWaddr \\([a-fA-F0-9:]\\{17,17\\}\\).*$/\\1/p'", str[STR_NET_IF]);
+    execOSCmd(buf, bufsize, "ifconfig %s | sed -n 's/^.* HWaddr \\([a-fA-F0-9:]\\{17,17\\}\\).*$/\\1/p'", str_map[STR_NET_IF]);
 }
 
 static void cmd3_ifconfig(char* buf, size_t bufsize)
 {
-    execOSCmd(buf, bufsize, "ifconfig -a %s | sed -n 's/^.* MTU:\\([0-9]*\\) .*$/\\1/p'", str[STR_NET_IF]);
+    execOSCmd(buf, bufsize, "ifconfig -a %s | sed -n 's/^.* MTU:\\([0-9]*\\) .*$/\\1/p'", str_map[STR_NET_IF]);
 }
 
 static void cmd4_route(char* buf, size_t bufsize)
 {
-    execOSCmd(buf, bufsize, "route -n | sed -n 's/^\\(0.0.0.0\\).* \\([0-9.]\\{7,15\\}\\) .*\\(0.0.0.0\\).*UG.* %s$/\\2/p'", str[STR_NET_IF]);
+    execOSCmd(buf, bufsize, "route -n | sed -n 's/^\\(0.0.0.0\\).* \\([0-9.]\\{7,15\\}\\) .*\\(0.0.0.0\\).*UG.* %s$/\\2/p'", str_map[STR_NET_IF]);
 }
 
 static void cmd5_arp(char* buf, size_t bufsize)
 {
-    execOSCmd(buf, bufsize, "arp -ni %s %s | sed -n 's/^.*\\([a-fA-F0-9:]\\{17,17\\}\\).*$/\\1/p'", str[STR_NET_IF], str[STR_GW_IP]);
+    execOSCmd(buf, bufsize, "arp -ni %s %s | sed -n 's/^.*\\([a-fA-F0-9:]\\{17,17\\}\\).*$/\\1/p'", str_map[STR_NET_IF], str_map[STR_GW_IP]);
 }
 
 static void cmd5_arping(char* buf, size_t bufsize)
 {
-    execOSCmd(buf, bufsize, "arping -f -I %s %s | sed -n 's/^.*\\([a-fA-F0-9:]\\{16,16\\}\\)\\].*$/0\\1/p'", str[STR_NET_IF], str[STR_GW_IP]);
+    execOSCmd(buf, bufsize, "arping -f -I %s %s | sed -n 's/^.*\\([a-fA-F0-9:]\\{16,16\\}\\)\\].*$/0\\1/p'", str_map[STR_NET_IF], str_map[STR_GW_IP]);
 }
 
 static void cmd6_route(char* buf, size_t bufsize)
 {
-    execOSCmd(NULL, 0, "route add default gw %s dev %s", str[STR_GW_IP], str[STR_NET_IF]);
+    execOSCmd(NULL, 0, "route add default gw %s dev %s", str_map[STR_GW_IP], str_map[STR_NET_IF]);
 }
 
 static void cmd7_route(char* buf, size_t bufsize)
 {
-    execOSCmd(NULL, 0, "route del default gw %s dev %s", str[STR_GW_IP], str[STR_NET_IF]);
+    execOSCmd(NULL, 0, "route del default gw %s dev %s", str_map[STR_GW_IP], str_map[STR_NET_IF]);
 }
 
 static void cmd8_route(char* buf, size_t bufsize)
 {
-    execOSCmd(NULL, 0, "route add default gw %s dev %s", str[STR_TUN_IP], str[STR_TUN_IF]);
+    execOSCmd(NULL, 0, "route add default gw %s dev %s", str_map[STR_TUN_IP], str_map[STR_TUN_IF]);
 }
 
 static void cmd9_route(char* buf, size_t bufsize)
 {
-    execOSCmd(NULL, 0, "route del default gw %s dev %s", str[STR_TUN_IP], str[STR_TUN_IF]);
+    execOSCmd(NULL, 0, "route del default gw %s dev %s", str_map[STR_TUN_IP], str_map[STR_TUN_IF]);
 }
 
 static void cmd10_iptables(char* buf, size_t bufsize)
 {
-    execOSCmd(NULL, 0, "iptables -A INPUT -i %s -m mac --mac-source %s -j DROP", str[STR_NET_IF], str[STR_GW_MAC]);
+    execOSCmd(NULL, 0, "iptables -A INPUT -i %s -m mac --mac-source %s -j DROP", str_map[STR_NET_IF], str_map[STR_GW_MAC]);
 }
 
 static void cmd11_iptables(char* buf, size_t bufsize)
 {
-    execOSCmd(NULL, 0, "iptables -D INPUT -i %s -m mac --mac-source %s -j DROP", str[STR_NET_IF], str[STR_GW_MAC]);
+    execOSCmd(NULL, 0, "iptables -D INPUT -i %s -m mac --mac-source %s -j DROP", str_map[STR_NET_IF], str_map[STR_GW_MAC]);
 }
 
 static void cmd12_iptables(char* buf, size_t bufsize)
 {
-    execOSCmd(NULL, 0, "iptables -A FORWARD -i %s -m mac --mac-source %s -j DROP", str[STR_NET_IF], str[STR_GW_MAC]);
+    execOSCmd(NULL, 0, "iptables -A FORWARD -i %s -m mac --mac-source %s -j DROP", str_map[STR_NET_IF], str_map[STR_GW_MAC]);
 }
 
 static void cmd13_iptables(char* buf, size_t bufsize)
 {
-    execOSCmd(NULL, 0, "iptables -D FORWARD -i %s -m mac --mac-source %s -j DROP", str[STR_NET_IF], str[STR_GW_MAC]);
+    execOSCmd(NULL, 0, "iptables -D FORWARD -i %s -m mac --mac-source %s -j DROP", str_map[STR_NET_IF], str_map[STR_GW_MAC]);
 }
 
 static void cmd14_iptables(char* buf, size_t bufsize)
 {
-    execOSCmd(NULL, 0, "iptables -A POSTROUTING -o %s -t nat -j MASQUERADE", str[STR_TUN_IF]);
+    execOSCmd(NULL, 0, "iptables -A POSTROUTING -o %s -t nat -j MASQUERADE", str_map[STR_TUN_IF]);
 }
 
 static void cmd15_iptables(char* buf, size_t bufsize)
 {
-    execOSCmd(NULL, 0, "iptables -D POSTROUTING -o %s -t nat -j MASQUERADE", str[STR_TUN_IF]);
+    execOSCmd(NULL, 0, "iptables -D POSTROUTING -o %s -t nat -j MASQUERADE", str_map[STR_TUN_IF]);
 }
 
 static void cmd16_ifconfig(char* buf, size_t bufsize)
 {
-    execOSCmd(NULL, 0, "ifconfig %s %s pointopoint %s mtu %s", str[STR_TUN_IF], str[STR_NET_IP], str[STR_TUN_IP], str[STR_TUN_MTU]);
+    execOSCmd(NULL, 0, "ifconfig %s %s pointopoint %s mtu %s", str_map[STR_TUN_IF], str_map[STR_NET_IP], str_map[STR_TUN_IP], str_map[STR_TUN_MTU]);
 }
 
 static struct cmd_sw cmd0_sw[] = {

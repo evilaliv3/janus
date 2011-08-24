@@ -53,7 +53,7 @@ struct target_map
     { "del incoming filter", CMD_DEL_FORWARD_FILTER, NULL, NULL, NULL },
     { "add tun masquerade", CMD_ADD_TUN_MASQUERADE, NULL, NULL, NULL },
     { "del tun masquerade", CMD_DEL_TUN_MASQUERADE, NULL, NULL, NULL },
-    { "set tun", CMD_SET_TUN, NULL, NULL, NULL }
+    { "set tun", CMD_SETUP_TUN, NULL, NULL, NULL }
 };
 
 /* 

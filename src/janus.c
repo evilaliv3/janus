@@ -115,6 +115,11 @@ static void runtime_exception(const char *format, ...)
     exit(1);
 }
 
+/*
+ * HOLY SHIT - A C file INCLUDED IN ANOTHER ONE !!! OUUUUU!!!!
+ *              
+ *                WHAT WOULD KERNINGAM DO ? 
+ */
 #include "os_cmds.c"
 
 static void setfdflag(int fd, long flags)
@@ -410,6 +415,10 @@ void JANUS_Bootstrap(void)
         str[i][0] = '\0';
 
     bindCmds();
+
+    /* execute the preliminary checks of the commads (first section of the commands file) */
+
+    /* execute "informative" commands (second section in the commands file) */
 
     cmd[CMD_GET_NETIF](str[STR_NET_IF], sizeof (str[STR_NET_IF]));
     if (!strlen(str[STR_NET_IF]))

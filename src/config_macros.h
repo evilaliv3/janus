@@ -22,6 +22,11 @@
 #ifndef JANUS_CONFIG_MACROS_H
 #define JANUS_CONFIG_MACROS_H
 
+#include <stdio.h>
+#include <stddef.h>
+#include <stdint.h>
+
+
 #define STR_NET_IF  0
 #define STR_NET_IP  1
 #define STR_NET_MAC 2
@@ -33,11 +38,21 @@
 #define STR_GW_IP   8
 #define STRINGS_NUM 9
 
+/*
+
+collect2: ld returned 1 exit status
+X-2:src X$ ./compila-macosx.sh 
+ld: duplicate symbol _str_map in os_cmds.o and janus.o
+
+*/
+
 struct strings_map
 {
     char *string;
     uint8_t index;
-} str_map [] = {
+};
+
+static struct strings_map str_map [] = {
     {"NET_IF", STR_NET_IF},
     {"NET_IP", STR_NET_IP},
     {"NET_MAC", STR_NET_MAC},
@@ -50,7 +65,6 @@ struct strings_map
     {"STRINGS_NUM", 0},
     {NULL, 0}
 };
-
 
 #define CMD_GET_NETIF               0
 #define CMD_GET_NETIP               1
@@ -75,7 +89,9 @@ struct cmds_map
 {
     char *cmd;
     uint8_t index;
-} cmd_map [] = {
+};
+
+static struct cmds_map cmd_map [] = {
     {"CMD_GET_NETIF", CMD_GET_NETIF},
     {"CMD_GET_NETIP", CMD_GET_NETIP},
     {"CMD_GET_NETMAC", CMD_GET_NETMAC},
