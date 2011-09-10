@@ -350,7 +350,7 @@ static uint8_t setupTUN(void)
 
     int tun;
 
-    if(( tun = tun_open(tun_name, strlen(tun_name))) == -1)
+    if(( tun = tun_open(tun_name, 10)) == -1)
         runtime_exception("unable to open tun interface: %s", tun_name);
 
     map_external_str('T', tun_name);
