@@ -1,3 +1,8 @@
+### TEMPORARY RELEASE 
+
+Not working release, at the moment the new parser is working correctly, but lack of the correct configuration system, installation (and symlink) of /etc/janus/current-os
+
+
 # Janus is a portable, unified and lightweight interface for mitm applications.
 
 It acts like a deamon and offers two simple stream sockets, one for input and one for the output traffic manipulations.

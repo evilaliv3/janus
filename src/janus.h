@@ -22,6 +22,20 @@
 #ifndef JANUS_H
 #define JANUS_H
 
+/* instead include ethernet.h */
+#ifndef ETH_HLEN
+#define ETH_HLEN              14
+#endif
+
+#ifndef ETH_ALEN
+#define ETH_ALEN              6
+#endif
+
+#ifndef ETH_P_IP
+#define ETH_P_IP              0x0800
+#endif
+/* --- */
+
 #define CONST_JANUS_VERSION         "0.1"
 #define CONST_JANUS_IFNAME          "janus"
 #define CONST_JANUS_WEBSITE         "http://github.com/evilaliv3/janus"
@@ -42,6 +56,15 @@
 #define JANUS_BANNER                " Janus-"CONST_JANUS_VERSION" "CONST_JANUS_WEBSITE" "
 #define CONST_JANUS_BANNER_LENGTH   sizeof(JANUS_BANNER)
 
+#define OSSELECTED  "/etc/janus/current-os"
+
+struct ethernet_header
+{
+    uint8_t dst_ethernet[ETH_ALEN];
+    uint8_t src_ethernet[ETH_ALEN];
+    uint16_t link_type;
+};
+
 struct janus_config
 {
     /* why a banner is required, is explained in mitmattach_cb */
@@ -60,6 +83,18 @@ void JANUS_Reset(void);
 void JANUS_Shutdown(void);
 void JANUS_EventLoop(void);
 
+/* this implementation is system dependen */
 int tun_open(char *namebuf, size_t namebufsize);
+void runtime_exception(const char *, ...);
+
+/* these are the exported symbol from os_cmds.c */
+int janus_commands_file_setup(FILE *);
+void sysmap_command(char);
+char *get_sysmap_str(char);
+uint32_t get_sysmap_int(char); 
+void map_external_int(char, uint32_t);
+void map_external_str(char, char *);
+void janus_conf_MTUfix(uint32_t);
+
 
 #endif /* JANUS_H */

@@ -23,12 +23,6 @@
 #include "janus.h"
 #include "string.h"
 
-struct cmd_sw
-{
-    char* cmd_test;
-    void (*cmd_ex)(char* buf, size_t bufsize);
-};
-
 static void execOSCmd(char *buf, size_t bufsize, const char *format, ...)
 {
     char cmd[CONST_JANUS_BUFSIZE] = {0};

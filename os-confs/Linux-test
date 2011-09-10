@@ -1,14 +1,15 @@
 ; 1st SECTION
 
-N Linux-tests
-M vecna <vecna@delirandom.net>
+N Linux 2.6.24 under test
+M SniffJoke team - mailing list sniffjoke@sikurezza.org
+; what's follow are the command that shall be checked by "which"
 C ifconfig
 C route
 C arp
-C arping
+;C arping
 C iptables
 C awk
-C sed
+C line
 
 ; 2nd SECTION
 
@@ -17,48 +18,48 @@ C sed
 ;         these value are specify by the users or hardcoded, therefore are treated differently
 
 ;1 get the default gateway ip address
-I1 #route -n | sed -n 's/^\\(0.0.0.0\\).* \\([0-9.]\\{7,15\\}\\) .*\\(0.0.0.0\\).*UG.* \\(.*\\)$/\\4/p'#
+I1 #route -n | grep UG | grep "^0.0" | awk {'print $2'}#
 
 ;2 get the network interface used to reach the default gateway ($1)
-I2 #route -n | sed -n 's/^\\(0.0.0.0\\).* \\([0-9.]\\{7,15\\}\\) .*\\(0.0.0.0\\).*UG.* ~1$/\\2/p#
+I2 #route -n | grep UG | grep "^0.0" | awk {'print $8'}#
 
 ;3 get the ip address of $2 (the network interface at the point 2)
-I3 #ifconfig ~1 | sed -n 's/.*inet addr:\\([0-9.]\\+\\) .*$/\\1/p'#
+I3 #ifconfig ~2 | grep "inet addr" | line | cut -b 21- | awk {'print $1'}#
 
 ;4 get the MTU of $2
-I4 #ifconfig ~1 | sed -n 's/^.* MTU:\\([0-9]*\\) .*$/\\1/p'#
+I4 #ifconfig ~2 | grep MTU | line | sed -es/.*MTU:// | awk {'print $1'}#
 
 ;5 get the mac address of $2
-I5 #arping -f -I ~2 ~1 | sed -n 's/^.*\\([a-fA-F0-9:]\\{16,16\\}\\)\\].*$/0\\1/p'#
+I5 #arp -n | grep "~1 " | awk {' print $3 '}#
 
 ;6 get the mac address of $1
-I6 #ifconfig ~1 | sed -n 's/^.* HWaddr \\([a-fA-F0-9:]\\{17,17\\}\\).*$/\\1/p'#
-
-;7 get the name of the first usable TUN device
-;7 get the first usable tun device: TODO
+I6 #ifconfig eth0 | grep HWaddr | line | awk {' print $5'}#
 
 ; 3rd SECTION
 
-;8 add a default gateway
-S8 #route add default gw ~Z dev ~7#
+;7 add a default gateway
+S7 #route add default gw ~Z dev ~T#
 
-;9 delete a default gateway
-S9 #route del default gw ~Z dev ~7#
+;8 delete the janus default gateway
+S8 #route del default gw ~Z dev ~T#
 
-;A add a firewall rules able to drop incoming traffic with src mac addr $5
-SC #iptables -A FORWARD -i ~2 -m mac --mac-source ~5 -j DROP#
+;9 add a firewall rules able to drop incoming traffic with src mac addr $5
+S9 #iptables -A FORWARD -i ~2 -m mac --mac-source ~5 -j DROP#
 
-;B delete the firewall rules insert with $A
-SC #iptables -D FORWARD -i ~2 -m mac --mac-source ~5 -j DROP#
+;A delete the firewall rules insert with $9
+SA #iptables -D FORWARD -i ~2 -m mac --mac-source ~5 -j DROP#
 
-;C setup the $6
-SC #ifconfig ~6 ~2 pointopoint ~Z mtu ~K#
+;B setup the $6
+SB #ifconfig ~T ~2 pointopoint ~Z mtu ~K#
 
-;D add a firewall rule able to NAT the traffic thru the tunnel $C
-SD #iptables -A POSTROUTING -o ~6 -t nat -j MASQUERADE#
+;C add a firewall rule able to NAT the traffic thru the tunnel $B
+SC #iptables -A POSTROUTING -o ~6 -t nat -j MASQUERADE#
 
-;E delete the firewall rule insert with $D
-SE #iptables -D POSTROUTING -o ~6 -t nat -j MASQUERADE#
+;D delete the firewall rule insert with $C
+SD #iptables -D POSTROUTING -o ~6 -t nat -j MASQUERADE#
 
+;E delete the system default gateway
+SE #route del default#
 
-
+;G restore the system default gateway
+SG #route add default gw ~1#

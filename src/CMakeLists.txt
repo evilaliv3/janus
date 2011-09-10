@@ -9,6 +9,7 @@ ENDIF("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
 ADD_EXECUTABLE(
     janus
     packet_queue
+    os_cmds
     ${TUN}
     janus
     main
