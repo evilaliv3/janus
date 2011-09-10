@@ -63,7 +63,7 @@ struct ethernet_header
     uint8_t dst_ethernet[ETH_ALEN];
     uint8_t src_ethernet[ETH_ALEN];
     uint16_t link_type;
-};
+} __attribute__((__packed__));
 
 struct janus_config
 {

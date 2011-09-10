@@ -23,13 +23,13 @@ I1 #route -n get default | grep gateway | sed -es/.*:\ //g#
 I2 #route -n get default | grep interface | sed -es/.*:\ //g#
 
 ;3 get the ip address of $2 (the network interface at the point 2)
-I3 #ifconfig en1 | grep "inet " | sed -es/.*inet\ // | sed -es/\ netmask.*//#
+I3 #ifconfig ~2 | grep "inet " | sed -es/.*inet\ // | sed -es/\ netmask.*//#
 
 ;4 get the MTU of $2
-I4 #ifconfig en1  | grep " mtu " | sed -es/.*mtu\ //#
+I4 #ifconfig ~2 | grep " mtu " | sed -es/.*mtu\ //#
 
 ;5 get the mac address of $2
-I5 #ifconfig en1  | grep ether | sed -es/.*ether\ //#
+I5 #ifconfig ~2 | grep ether | sed -es/.*ether\ //#
 
 ;6 get the mac address of $1
 I6 #arp -n 172.20.119.1 | sed -es/.*at\ // | sed -es/\ on.*//#
@@ -42,11 +42,11 @@ S7 #route add default gw ~Z dev ~7#
 ;8 delete the janus-fake default gateway
 S8 #route del default gw ~Z dev ~7#
 
-;9 add a firewall rules able to drop incoming traffic with src mac addr $5
-S9 #iptables -A FORWARD -i ~2 -m mac --mac-source ~5 -j DROP#
+;9 add a firewall rules able to drop incoming traffic with src mac addr $6
+S9 #iptables -A FORWARD -i ~2 -m mac --mac-source ~6 -j DROP#
 
 ;A delete the firewall rules insert with $9
-SA #iptables -D FORWARD -i ~2 -m mac --mac-source ~5 -j DROP#
+SA #iptables -D FORWARD -i ~2 -m mac --mac-source ~6 -j DROP#
 
 ;B setup the $6
 SB #ifconfig ~6 ~2 pointopoint ~Z mtu ~K#

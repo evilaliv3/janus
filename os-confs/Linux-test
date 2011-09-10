@@ -30,10 +30,10 @@ I3 #ifconfig ~2 | grep "inet addr" | line | cut -b 21- | awk {'print $1'}#
 I4 #ifconfig ~2 | grep MTU | line | sed -es/.*MTU:// | awk {'print $1'}#
 
 ;5 get the mac address of $2
-I5 #arp -n | grep "~1 " | awk {' print $3 '}#
+I5 #ifconfig ~2 | grep HWaddr | line | awk {' print $5'}#
 
 ;6 get the mac address of $1
-I6 #ifconfig eth0 | grep HWaddr | line | awk {' print $5'}#
+I6 #arp -n | grep "~1 " | awk {' print $3 '}#
 
 ; 3rd SECTION
 
@@ -43,7 +43,7 @@ S7 #route add default gw ~Z dev ~T#
 ;8 delete the janus default gateway
 S8 #route del default gw ~Z dev ~T#
 
-;9 add a firewall rules able to drop incoming traffic with src mac addr $5
+;9 add a firewall rules able to drop incoming traffic with src mac addr $6
 S9 #iptables -A FORWARD -i ~2 -m mac --mac-source ~6 -j DROP && iptables -A INPUT -i ~2 -m mac --mac-source ~6 -j DROP#
 
 ;A delete the firewall rules insert with $9

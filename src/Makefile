@@ -181,6 +181,21 @@ main.s:
 .PHONY : main.s
 
 # target to build an object file
+os_cmds.o:
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/os_cmds.o
+.PHONY : os_cmds.o
+
+# target to preprocess a source file
+os_cmds.i:
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/os_cmds.i
+.PHONY : os_cmds.i
+
+# target to generate assembly for a file
+os_cmds.s:
+	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/os_cmds.s
+.PHONY : os_cmds.s
+
+# target to build an object file
 packet_queue.o:
 	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/packet_queue.o
 .PHONY : packet_queue.o
@@ -229,6 +244,9 @@ help:
 	@echo "... main.o"
 	@echo "... main.i"
 	@echo "... main.s"
+	@echo "... os_cmds.o"
+	@echo "... os_cmds.i"
+	@echo "... os_cmds.s"
 	@echo "... packet_queue.o"
 	@echo "... packet_queue.i"
 	@echo "... packet_queue.s"
