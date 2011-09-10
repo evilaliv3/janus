@@ -43,13 +43,15 @@ command of informative type are:
 
 command of mandatory type are:
 
-7 add a default gateway
-8 delete a default gateway
+7 add the janus fake default gateway
+8 delete the janus fake default gateway
 9 add a firewall rules able to drop incoming traffic with src mac addr $5
 A delete the firewall rules insert with $9
 B setup the tun, indexed by the var ~T
 C add a firewall rule able to NAT the traffic thru the tunnel $A
 D delete the firewall rule insert with $B
+E delete the system default gateway
+G restore the system default gateway
 
 everyone command could be a composed one using for example pipes,
 semicolons, logic AND, OR, et cetera. For example, get the $1 to $6 will

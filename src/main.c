@@ -155,7 +155,7 @@ int main(int argc, char **argv)
 
     /* the banner in conf will be clear in janus.c:mitmattach_cb */
     snprintf(conf.banner, CONST_JANUS_BANNER_LENGTH, "%s", JANUS_BANNER);
-    snprintf(conf.hex_banner_len, 2, "%c", CONST_JANUS_BANNER_LENGTH);
+    snprintf(conf.hex_banner_len, 2, "%c", (int)CONST_JANUS_BANNER_LENGTH);
 
     snprintf(conf.listen_ip, sizeof (conf.listen_ip), "%s", CONST_JANUS_LISTEN_IP);
     conf.listen_port_in = CONST_JANUS_LISTEN_PORT_IN;

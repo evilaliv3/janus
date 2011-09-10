@@ -311,7 +311,7 @@ int collect_second_section(char *line, int lineNum)
                 return ERROR_PARSER;
             }
 
-            printf("%s ", data_collect[i].info);
+            printf("%s", data_collect[i].info);
 
             if( data_collect[i].pc_info != '0' )
             {
@@ -324,23 +324,23 @@ int collect_second_section(char *line, int lineNum)
                 }
 
                 /* else, the requested data for debug operations is correct */
-                printf("%s\n", previous_info);
+                printf("%s", previous_info);
             }
 
             if((swp = expand_command(poash_data_extract(line), (struct janus_data_collect *)&data_collect)) == NULL)
             {
-                printf("error in expansion of the command [%s]\n", line);
+                printf(": error in expansion of the command [%s]\n", line);
                 return ERROR_PARSER;
             }
 
             if((data_collect[i].data = do_popen(swp)) == NULL)
             {
-                runtime_exception("command at line [%d] don't return output: not acceptable in the section 2\n", lineNum);
+                printf(": Error in command at line [%d]: don't return output.\n", lineNum);
                 return ERROR_PARSER;
             }
             else
             {
-                printf("acquired output [%s]\n", data_collect[i].data);
+                printf(": output acquired [%s]\n", data_collect[i].data);
                 return GOOD_PARSING;
             }
         }
@@ -364,7 +364,7 @@ int collect_third_section(char *line)
         {
             mandatory_command[i].acquired_string = poash_data_extract(line);
 
-            mandatory_command[i].command = strdup(expand_command(mandatory_command[i].acquired_string, (struct janus_data_collect *)&data_collect));
+            mandatory_command[i].command = strdup(mandatory_command[i].acquired_string);
 
             if(mandatory_command[i].command == NULL)
             {
@@ -492,7 +492,15 @@ void sysmap_command(char req)
     {
         if(mandatory_command[i].Ji == req) 
         {
-            printf("executing %s - %s\n", mandatory_command[i].info, mandatory_command[i].command);
+            mandatory_command[i].command = strdup(
+                                                expand_command(mandatory_command[i].acquired_string, 
+                                                                (struct janus_data_collect *)&data_collect)
+                                            );
+
+            printf("+ %s [%s]\n", mandatory_command[i].info, mandatory_command[i].command);
+
+            /* todo: could be useful use a different popen (different from do_popen) and check
+             * if someshit is wiritten on strerr ? */
             system(mandatory_command[i].command);
             break;
         }
@@ -516,13 +524,13 @@ char *get_sysmap_str(char req)
     {
         case 'K': /* MTU value */
             return "1200";
-            break;
         case 'Z':
             return CONST_JANUS_FAKEGW_IP;
-            break;
         case 'T':
-            return "/dev/tun";
-            break;
+            if(T == NULL)
+                runtime_exception("has been requested element index by ~T before tunnel is opened!\n");
+            else
+                return T;
         default:
             runtime_exception("has been searched the command index with '%c': this element doesn't exist\n", req);
     }
@@ -533,6 +541,9 @@ char *get_sysmap_str(char req)
 
 void map_external_str(char req, char *data)
 {
+    if(data == NULL || strlen(data) <= 1)
+        runtime_exception("something is going very bad in your code\n");
+
     switch(req)
     {
         case 'T':
