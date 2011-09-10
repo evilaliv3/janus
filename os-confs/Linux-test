@@ -44,19 +44,19 @@ S7 #route add default gw ~Z dev ~T#
 S8 #route del default gw ~Z dev ~T#
 
 ;9 add a firewall rules able to drop incoming traffic with src mac addr $5
-S9 #iptables -A FORWARD -i ~2 -m mac --mac-source ~5 -j DROP#
+S9 #iptables -A FORWARD -i ~2 -m mac --mac-source ~6 -j DROP && iptables -A INPUT -i ~2 -m mac --mac-source ~6 -j DROP#
 
 ;A delete the firewall rules insert with $9
-SA #iptables -D FORWARD -i ~2 -m mac --mac-source ~5 -j DROP#
+SA #iptables -D FORWARD -i ~2 -m mac --mac-source ~6 -j DROP && iptables -D INPUT -i ~2 -m mac --mac-source ~6 -j DROP#
 
 ;B setup the $6
-SB #ifconfig ~T ~2 pointopoint ~Z mtu ~K#
+SB #ifconfig ~T ~3 pointopoint ~Z mtu ~K#
 
 ;C add a firewall rule able to NAT the traffic thru the tunnel $B
-SC #iptables -A POSTROUTING -o ~6 -t nat -j MASQUERADE#
+SC #iptables -A POSTROUTING -o ~T -t nat -j MASQUERADE#
 
 ;D delete the firewall rule insert with $C
-SD #iptables -D POSTROUTING -o ~6 -t nat -j MASQUERADE#
+SD #iptables -D POSTROUTING -o ~T -t nat -j MASQUERADE#
 
 ;E delete the system default gateway
 SE #route del default#

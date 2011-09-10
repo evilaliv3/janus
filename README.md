@@ -1,8 +1,3 @@
-### TEMPORARY RELEASE 
-
-Not working release, at the moment the new parser is working correctly, but lack of the correct configuration system, installation (and symlink) of /etc/janus/current-os
-
-
 # Janus is a portable, unified and lightweight interface for mitm applications.
 
 It acts like a deamon and offers two simple stream sockets, one for input and one for the output traffic manipulations.
@@ -12,7 +7,10 @@ Janus overrides the actual routing table, creating a fake gateway with the aim t
 
 # Requirements
 
-    cmake, gcc, libevent, libpcap, iptables, route, sed
+    found your operating system between those implemented in os-confs/
+    starting janus, with the correct symlink /etc/janus/current-os poiting to your selected os-confs file, contains the appropriate checks.
+
+    If you're using a package, could have provided itself with the appropriate dependencies.
 
 # Below is an example of Janus usage starting from this initial routing table:
 
