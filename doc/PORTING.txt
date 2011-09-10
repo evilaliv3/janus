@@ -40,24 +40,23 @@ command of informative type are:
 4 get the MTU of $2
 5 get the mac address of $2
 6 get the mac address of $1
-7 get the name of the first usable TUN device
 
 command of mandatory type are:
 
-8 add a default gateway
-9 delete a default gateway
-A add a firewall rules able to drop incoming traffic with src mac addr $5
-B delete the firewall rules insert with $9
-C setup the $6 
-D add a firewall rule able to NAT the traffic thru the tunnel $B
-E delete the firewall rule insert with $C
+7 add a default gateway
+8 delete a default gateway
+9 add a firewall rules able to drop incoming traffic with src mac addr $5
+A delete the firewall rules insert with $9
+B setup the tun, indexed by the var ~T
+C add a firewall rule able to NAT the traffic thru the tunnel $A
+D delete the firewall rule insert with $B
 
 everyone command could be a composed one using for example pipes,
 semicolons, logic AND, OR, et cetera. For example, get the $1 to $6 will
 require the usage of command ifconfig, route, arp and parsing the output with
 sed or awk. 
 
-Implementing a command $9 will require, in some system two different firewall 
+Implementing a command $8 will require, in some system two different firewall 
 command (the first intended to drop incoming traffic destinated to the local box,
 the second to drop the same traffic that will be forwarded, in the case Janus is
 running in a network gateway)
@@ -135,9 +134,10 @@ format required:
 5) every command in the 2nd and 3rd section will be embraced by "#" at the start
    to the end.
 6) the comments start with the semicolon ";"
-7) there are two special variable (there indexed by "~"): ~K and ~Z.
+7) there are three special variable (there indexed by "~"): ~K, ~Z and ~T:
    Z is the fake gateway ip address
    K is the fake MTU usable in the tunnel
+   T is the first available tun number
    these value are hardcoded/readed by option/computed inside Janus, therefore
    are called by special parameters.
 

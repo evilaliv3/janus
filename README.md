@@ -7,7 +7,10 @@ Janus overrides the actual routing table, creating a fake gateway with the aim t
 
 # Requirements
 
-    cmake, gcc, libevent, libpcap, iptables, route, sed
+    found your operating system between those implemented in os-confs/
+    starting janus, with the correct symlink /etc/janus/current-os poiting to your selected os-confs file, contains the appropriate checks.
+
+    If you're using a package, could have provided itself with the appropriate dependencies.
 
 # Below is an example of Janus usage starting from this initial routing table:
 

@@ -15,290 +15,582 @@
  *   MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
  *   GNU General Public License for more details.
  *
- *   You should have received a copy of the GNU General Public License
- *   along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ * You should have received a copy of the GNU General Public License
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
+ *
  */
-
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <stdlib.h>
+#include <ctype.h>
 #include "config_macros.h"
 #include "janus.h"
-#include "string.h"
 
-struct cmd_sw
+static uint8_t os_present, mn_present;
+
+#define ERROR_PARSER    0
+#define GOOD_PARSING    1
+#define NOT_MY_DATA     2
+
+/* struct for tracking command & what's is printed out when the commands are exec'd */
+struct janus_data_collect
 {
-    char* cmd_test;
-    void (*cmd_ex)(char* buf, size_t bufsize);
+    char Ji;
+    const char *info;           /* information for the user */
+    const char pc_info;         /* previously collected info */
+    char *data;
+} data_collect[] = 
+{
+    { '1', "get default gateway ip address", '0', NULL },
+    { '2', "get the network interface linked to the gateway", '0', NULL },
+    { '3', "get the ip address of ", '2', NULL },
+    { '4', "get the MTU of ", '2', NULL },
+    { '5', "get the MAC address of ", '2', NULL },
+    { '6', "get the MAC address of ", '1', NULL },
+    { '0', NULL, 0, NULL }
 };
 
-static void execOSCmd(char *buf, size_t bufsize, const char *format, ...)
+struct janus_mandatory_command
 {
-    char cmd[CONST_JANUS_BUFSIZE] = {0};
-    FILE *stream = NULL;
+    char Ji;
+    const char *info;
+    char *acquired_string;
+    char *command;
+} mandatory_command[] =
+{
+    { '7', "add janus as gateway", NULL, NULL },
+    { '8', "delete janus from begin gateway", NULL, NULL },
+    { '9', "add filter dropping incoming traffic with orig GWs MAC", NULL, NULL },
+    { 'A', "delete the filter dropping ", NULL, NULL },
+    { 'B', "setup the tunnel", NULL, NULL },
+    { 'C', "add addictional rule for forwarded traffic", NULL, NULL },
+    { 'D', "delete the forward rule", NULL, NULL },
+    { 'E', "delete the real default gateway", NULL, NULL },
+    { 'G', "restore the real default gateway", NULL, NULL },
+    { '0', NULL, NULL, NULL }
+};
+/*
+ * remind special char:
+ * ***********************************
+ * T: tunnel name
+ * Z: local endpoint ip address 
+ * K: MTU value for the tun interface
+ * ***********************************
+ */
+char *T = NULL, *Z = NULL, *K = NULL;
 
-    va_list arguments;
-    va_start(arguments, format);
-    vsnprintf(cmd, sizeof (cmd), format, arguments);
-    va_end(arguments);
+/* 
+ * with janus package will became installed:
+ * /etc/janus
+ * /etc/janus/current-os -> /etc/janus/os-commands/Linux-whatever.janus
+ *
+ * Linux-whatever.janus is the configuration file containing the commands
+ * executed to obtain the required effect on the running system.
+ *
+ * every new operating system must have a checked configuration file, with
+ * the execution of janus-tester, an executable obtained compiling this file
+ * with -DJANUS-TESTER in the command line.
+ */
+#define MAXLINESIZE 256
 
-    printf("executing cmd: [%s]\n", cmd);
+/* two, and only two "#" are expected in a command line */
+static int line_sanity_check(char *line)
+{
+    int cnt = 0, i = 0;
 
-    stream = popen(cmd, "r");
-    if (stream != NULL)
+    for(i = 0 ; i < MAXLINESIZE || line[i] == 0x00; i++)
+        if(line[i] == '#') 
+            cnt++;
+
+    return (cnt == 2);
+}
+
+static char *poash_data_extract(char *line)
+{
+    char swapL[MAXLINESIZE];
+    int i, j = 0;
+    int good = 0;
+
+    memset(&swapL, 0x00, MAXLINESIZE);
+
+    for(i = 0; i < strlen(line); i++)
     {
-        if (buf != NULL)
+        if( good == 0 && line[i] == '#') {
+            good = 1;
+            continue;
+        }
+
+        if( good == 1 && line[i] == '#') {
+            good = 0;
+            break;
+        }
+
+        if( good )
+            swapL[j++] = line[i];
+    }
+
+    return (char *)strdup(swapL);
+}
+
+static void clean_retbuf(char *retbuf, char *arrayofstrip)
+{
+    int i;
+    for(i =0; i < strlen(arrayofstrip); i++)
+    {
+        char *underCheck = strchr(retbuf, arrayofstrip[i]);
+
+        if(underCheck != NULL)
+            *underCheck = 0x00;
+    }
+}
+
+static char *do_popen(char *command)
+{
+#define SIZEBULK    4096
+    char buffer[SIZEBULK];
+    FILE *outshell;
+
+    memset(buffer, 0x00, SIZEBULK);
+
+    if((outshell = popen(command, "r")) == NULL) {
+        printf("command [%s] no pipe open!\n", command);
+        return NULL;
+    }
+
+    if(fgets(buffer, SIZEBULK, outshell) == NULL)
+    {
+        printf("command [%s] return no any answer!\n", command);
+        return NULL;
+    }
+    pclose(outshell);
+
+    clean_retbuf(buffer, "\r\n");
+    return (char *)strdup(buffer);
+}
+
+static char *extract_simple(char *line)
+{
+    static char retb[MAXLINESIZE];
+    int i;
+
+    memset(retb, 0x00, MAXLINESIZE);
+    for(i = 2; i < MAXLINESIZE && line[i] != 0x00; i++)
+        retb[i - 2] = line[i];
+
+    return &retb[0];
+}
+
+static int handle_OSName(char *line)
+{
+    if( line[0] == 'N' )
+    {
+        os_present++;
+        printf(". configuration file written to work in: %s\n", extract_simple(line) );
+
+        return os_present;
+    }
+    return 0;
+}
+
+int handle_Maintainer(char *line)
+{
+    if( line[0] == 'M' )
+    {
+        mn_present++;
+        printf(". configuration file written by: %s, contact in case of errors\n", extract_simple(line) );
+
+        return mn_present;
+    }
+    return 0;
+}
+
+static char *which_command(char *execname)
+{
+    char buffer[SIZEBULK], *ret;
+    memset(buffer, 0x00, SIZEBULK);
+    snprintf(buffer, SIZEBULK, "which %s", execname);
+
+    /* do_popen use a static buffer */
+    ret = do_popen(buffer);
+
+    return ret;
+}
+
+/* return 0: ok the command, -1: not found, other: is not a command */
+int handle_CheckCommand(char *line) 
+{
+    char *cmdret = NULL;
+
+    if( line[0] == 'C' )
+    {
+        printf("checking existence of command [%s]: ", extract_simple(line) );
+
+        /* we're using the static buffer of do_popen: don't relay on it */
+        cmdret = which_command( extract_simple(line) );
+
+        if(cmdret == NULL || strlen(cmdret) == 0)
         {
-            memset(buf, 0, bufsize);
+            printf(" executable not found!!\n");
+            return ERROR_PARSER;
+        }
+        else
+        {
+            printf(" found at %s\n", cmdret);
+            return GOOD_PARSING;
+        }
+    }
+    return NOT_MY_DATA;
+}
 
-            if (fgets(buf, bufsize, stream) != NULL)
+char *expand_command(char *original_rawcmd, struct janus_data_collect *jdc)
+{
+    /* as first: rawcmd is the stored buffer in the os_cfg global struct: must not be touched */
+    char *tofree = strdup(original_rawcmd);
+    char *rawcmd = tofree, *last_p = NULL, *p = NULL;
+
+    static char retbuf[MAXLINESIZE];
+    int j = 0;
+
+    /* check if "~" exist at all */
+    if ((p = strchr( rawcmd, (int)'~')) == NULL) {
+        free(tofree);
+        return original_rawcmd;
+    }
+
+    memset(&retbuf[0], ' ', MAXLINESIZE);
+
+    last_p = &rawcmd[0];
+    do 
+    {
+        /* delete the "~" and increment after */
+        *p = 0x00; p++;
+
+        memcpy( &retbuf[j], last_p, strlen(last_p) );
+        j += strlen(last_p);
+
+        /* remind: has to became _readVal_instead_of_0_ */
+        memcpy( &retbuf[j], get_sysmap_str(*p), strlen(get_sysmap_str(*p)));
+
+        j += strlen(get_sysmap_str(*p));
+
+        /* delete the command code and increment after */
+        *p = 0x00; p++; last_p = p;
+        /* index to the next "~" if present */
+        p = strchr(p, '~');
+    } while (p != NULL );
+
+    memcpy(&retbuf[j], last_p, strlen(last_p));
+    j += strlen(last_p);
+    retbuf[j] = 0x00;
+
+    /* remind: rawcmd is the working copy to destroy, but the ptr *rawcmd is moved. "tofree" kept track */
+    free(tofree);
+
+    return &retbuf[0];
+}
+
+/* return 0: ok the command, -1: error, other: is not a command */
+int collect_second_section(char *line, int lineNum)
+{
+    int i;
+
+    if(line[0] != 'I')
+        return NOT_MY_DATA;
+
+    for (i = 0; data_collect[i].info != NULL; i++)
+    {
+        if(line[1] == data_collect[i].Ji)
+        {
+            char *swp = NULL;
+
+            /* check if the command is not already memorized */
+            if(data_collect[i].data != NULL)
             {
-                const size_t len = strlen(buf);
+                printf("Invalid line %d: command index '%c' already executed (is %s)\n", lineNum, data_collect[i].Ji, data_collect[i].data);
+                return ERROR_PARSER;
+            }
 
-                if (len && buf[len - 1] == '\n')
-                    buf[len - 1] = '\0';
+            printf("%s ", data_collect[i].info);
+
+            if( data_collect[i].pc_info != '0' )
+            {
+                char *previous_info = get_sysmap_str(data_collect[i].pc_info);
+
+                if( previous_info == NULL )
+                {
+                    printf("wrong order calling, request index of '%c' before having it\n", data_collect[i].pc_info);
+                    return ERROR_PARSER;
+                }
+
+                /* else, the requested data for debug operations is correct */
+                printf("%s\n", previous_info);
+            }
+
+            if((swp = expand_command(poash_data_extract(line), (struct janus_data_collect *)&data_collect)) == NULL)
+            {
+                printf("error in expansion of the command [%s]\n", line);
+                return ERROR_PARSER;
+            }
+
+            if((data_collect[i].data = do_popen(swp)) == NULL)
+            {
+                runtime_exception("command at line [%d] don't return output: not acceptable in the section 2\n", lineNum);
+                return ERROR_PARSER;
+            }
+            else
+            {
+                printf("acquired output [%s]\n", data_collect[i].data);
+                return GOOD_PARSING;
             }
         }
-
-        pclose(stream);
+        /* skip next data_collet[].Ji */
     }
+
+    printf("invalid command code after the 'I' in the line [%s]\n", line);
+    return ERROR_PARSER;
 }
 
-static void (*bindCmd(struct cmd_sw cmd[]))(char* buf, size_t bufsize)
+int collect_third_section(char *line)
 {
-    char test[CONST_JANUS_BUFSIZE] = {0};
+    int i;
 
-    uint8_t i = 0;
-    while (cmd[i].cmd_test != NULL)
+    if(line[0] != 'S')
+        return NOT_MY_DATA;
+
+    for (i = 0; mandatory_command[i].info != NULL; i++)
     {
-        execOSCmd(test, sizeof (test), "which %s", cmd[i].cmd_test);
-        if (strlen(test))
+        if(line[1] == mandatory_command[i].Ji)
         {
-            printf("binding executed using: %s\n", cmd[i].cmd_test);
-            return cmd[i].cmd_ex;
+            mandatory_command[i].acquired_string = poash_data_extract(line);
+
+            mandatory_command[i].command = strdup(expand_command(mandatory_command[i].acquired_string, (struct janus_data_collect *)&data_collect));
+
+            if(mandatory_command[i].command == NULL)
+            {
+                printf("unable to expand command [%s]\n", mandatory_command[i].acquired_string);
+                return ERROR_PARSER;
+            }
+
+            printf("%s: [%s]\n", mandatory_command[i].info, mandatory_command[i].command);
+
+            /* in this phase we only collect these commands, because we don't want change 
+             * the OS now */
+
+            return GOOD_PARSING;
+        }
+    }
+
+    printf("invalid command code after the 'S' in the line [%s]\n", line);
+    return ERROR_PARSER;
+}
+
+/* 
+ *                          *************************************
+ *                          what's follow are the exported symbol
+ *                          *************************************
+ */
+
+/* the main parsing routine: return 0 on error, return 1 on OK */
+int janus_commands_file_setup(FILE *oscmds)
+{
+    int fndx = 0, i;
+
+    if(oscmds == NULL)
+    {
+        printf("unable to open configuration file!\n");
+        return 0;
+    }
+
+    while(!feof(oscmds))
+    {
+        int parserRet;
+        char rdLine[MAXLINESIZE];
+        memset(&rdLine[0], 0x00, MAXLINESIZE);
+
+        fgets(rdLine, MAXLINESIZE, oscmds);
+        fndx++;
+
+        rdLine[strlen(rdLine) - 1] = 0x00;
+
+        /* basic sanity checks */
+        if(strlen(rdLine) > (MAXLINESIZE - 1) || strlen(rdLine) < 4 || rdLine[0] == ';')
+            continue;
+
+        /* make a surprise, when someone forgot a whitespace, don't make them sw broke! */
+        if(rdLine[0] == ' ')
+        {
+            for(i = 0; i < (MAXLINESIZE -1); i++)
+                if(rdLine[i] != ' ')
+                    break;
+                
+            memmove(&rdLine[0], &rdLine[i], strlen(rdLine) - i);
         }
 
-        ++i;
+        /* handle the 'M' and 'N' keychars */
+        if( handle_OSName(rdLine) || handle_Maintainer(rdLine) )
+            continue;
+
+        if (!os_present || !mn_present) {
+            printf("invalid compilation detected at %d. supported OS name and maintainer: required\n", fndx);
+            return 0;
+        }
+
+        /* 1st SECTION: the parsing of os-cmds/ require three stage analysis */
+        parserRet = handle_CheckCommand(rdLine);
+        switch(parserRet) {
+            case NOT_MY_DATA:
+                break;
+            case GOOD_PARSING:
+                continue;
+            default: /* ERROR_PARSER */
+                printf("invalid command checked at line: %d\n", fndx);
+                return 0;
+        }
+
+        if(!line_sanity_check(rdLine)) 
+        {
+            printf("incorrect use of #..# at line %d\n", fndx);
+            return 0;
+        }
+
+        /* 2nd SECTION: the data collection operation */
+        parserRet = collect_second_section(rdLine, fndx);
+        switch(parserRet) {
+            case NOT_MY_DATA:
+                break;
+            case GOOD_PARSING:
+                continue;
+            default: /* ERROR_PARSER */
+                printf("unable to collect information from command at line: %d\n", fndx);
+                return 0;
+        }
+
+        /* 3rd SECTION: the system interfacing */
+        parserRet = collect_third_section(rdLine);
+        switch(parserRet) {
+            case NOT_MY_DATA:
+                break;
+            case GOOD_PARSING:
+                continue;
+            default: /* ERROR_PARSER */
+                printf("unable to acquire the mandatory command at line: %d\n", fndx);
+                return 0;
+        }
+
+        printf("Invalid line %d: unable to handle [%s]\n", fndx, rdLine);
+        return 0;
     }
-
-    return NULL;
+    return 1;
 }
 
-static void cmd0_route(char* buf, size_t bufsize)
+void sysmap_command(char req)
 {
-    execOSCmd(buf, bufsize, "route -n | sed -n 's/^\\(0.0.0.0\\).* \\([0-9.]\\{7,15\\}\\) .*\\(0.0.0.0\\).*UG.* \\(.*\\)$/\\4/p'");
-}
+    uint32_t i;
 
-static void cmd1_ifconfig(char* buf, size_t bufsize)
-{
-    execOSCmd(buf, bufsize, "ifconfig %s | sed -n 's/.*inet addr:\\([0-9.]\\+\\) .*$/\\1/p'", str_map[STR_NET_IF]);
-}
-
-static void cmd2_ifconfig(char* buf, size_t bufsize)
-{
-    execOSCmd(buf, bufsize, "ifconfig %s | sed -n 's/^.* HWaddr \\([a-fA-F0-9:]\\{17,17\\}\\).*$/\\1/p'", str_map[STR_NET_IF]);
-}
-
-static void cmd3_ifconfig(char* buf, size_t bufsize)
-{
-    execOSCmd(buf, bufsize, "ifconfig -a %s | sed -n 's/^.* MTU:\\([0-9]*\\) .*$/\\1/p'", str_map[STR_NET_IF]);
-}
-
-static void cmd4_route(char* buf, size_t bufsize)
-{
-    execOSCmd(buf, bufsize, "route -n | sed -n 's/^\\(0.0.0.0\\).* \\([0-9.]\\{7,15\\}\\) .*\\(0.0.0.0\\).*UG.* %s$/\\2/p'", str_map[STR_NET_IF]);
-}
-
-static void cmd5_arp(char* buf, size_t bufsize)
-{
-    execOSCmd(buf, bufsize, "arp -ni %s %s | sed -n 's/^.*\\([a-fA-F0-9:]\\{17,17\\}\\).*$/\\1/p'", str_map[STR_NET_IF], str_map[STR_GW_IP]);
-}
-
-static void cmd5_arping(char* buf, size_t bufsize)
-{
-    execOSCmd(buf, bufsize, "arping -f -I %s %s | sed -n 's/^.*\\([a-fA-F0-9:]\\{16,16\\}\\)\\].*$/0\\1/p'", str_map[STR_NET_IF], str_map[STR_GW_IP]);
-}
-
-static void cmd6_route(char* buf, size_t bufsize)
-{
-    execOSCmd(NULL, 0, "route add default gw %s dev %s", str_map[STR_GW_IP], str_map[STR_NET_IF]);
-}
-
-static void cmd7_route(char* buf, size_t bufsize)
-{
-    execOSCmd(NULL, 0, "route del default gw %s dev %s", str_map[STR_GW_IP], str_map[STR_NET_IF]);
-}
-
-static void cmd8_route(char* buf, size_t bufsize)
-{
-    execOSCmd(NULL, 0, "route add default gw %s dev %s", str_map[STR_TUN_IP], str_map[STR_TUN_IF]);
-}
-
-static void cmd9_route(char* buf, size_t bufsize)
-{
-    execOSCmd(NULL, 0, "route del default gw %s dev %s", str_map[STR_TUN_IP], str_map[STR_TUN_IF]);
-}
-
-static void cmd10_iptables(char* buf, size_t bufsize)
-{
-    execOSCmd(NULL, 0, "iptables -A INPUT -i %s -m mac --mac-source %s -j DROP", str_map[STR_NET_IF], str_map[STR_GW_MAC]);
-}
-
-static void cmd11_iptables(char* buf, size_t bufsize)
-{
-    execOSCmd(NULL, 0, "iptables -D INPUT -i %s -m mac --mac-source %s -j DROP", str_map[STR_NET_IF], str_map[STR_GW_MAC]);
-}
-
-static void cmd12_iptables(char* buf, size_t bufsize)
-{
-    execOSCmd(NULL, 0, "iptables -A FORWARD -i %s -m mac --mac-source %s -j DROP", str_map[STR_NET_IF], str_map[STR_GW_MAC]);
-}
-
-static void cmd13_iptables(char* buf, size_t bufsize)
-{
-    execOSCmd(NULL, 0, "iptables -D FORWARD -i %s -m mac --mac-source %s -j DROP", str_map[STR_NET_IF], str_map[STR_GW_MAC]);
-}
-
-static void cmd14_iptables(char* buf, size_t bufsize)
-{
-    execOSCmd(NULL, 0, "iptables -A POSTROUTING -o %s -t nat -j MASQUERADE", str_map[STR_TUN_IF]);
-}
-
-static void cmd15_iptables(char* buf, size_t bufsize)
-{
-    execOSCmd(NULL, 0, "iptables -D POSTROUTING -o %s -t nat -j MASQUERADE", str_map[STR_TUN_IF]);
-}
-
-static void cmd16_ifconfig(char* buf, size_t bufsize)
-{
-    execOSCmd(NULL, 0, "ifconfig %s %s pointopoint %s mtu %s", str_map[STR_TUN_IF], str_map[STR_NET_IP], str_map[STR_TUN_IP], str_map[STR_TUN_MTU]);
-}
-
-static struct cmd_sw cmd0_sw[] = {
-    {"route", cmd0_route},
-    {NULL, NULL}
-};
-
-static struct cmd_sw cmd1_sw[] = {
-    {"ifconfig", cmd1_ifconfig},
-    {NULL, NULL}
-};
-
-static struct cmd_sw cmd2_sw[] = {
-    {"ifconfig", cmd2_ifconfig},
-    {NULL, NULL}
-};
-
-static struct cmd_sw cmd3_sw[] = {
-    {"ifconfig", cmd3_ifconfig},
-    {NULL, NULL}
-};
-
-static struct cmd_sw cmd4_sw[] = {
-    {"route", cmd4_route},
-    {NULL, NULL}
-};
-
-static struct cmd_sw cmd5_sw[] = {
-    {"arp", cmd5_arp},
-    {"arping", cmd5_arping},
-    {NULL, NULL}
-};
-
-static struct cmd_sw cmd6_sw[] = {
-    {"route", cmd6_route},
-    {NULL, NULL}
-};
-
-static struct cmd_sw cmd7_sw[] = {
-    {"route", cmd7_route},
-    {NULL, NULL}
-};
-
-static struct cmd_sw cmd8_sw[] = {
-    {"route", cmd8_route},
-    {NULL, NULL}
-};
-
-static struct cmd_sw cmd9_sw[] = {
-    {"route", cmd9_route},
-    {NULL, NULL}
-};
-
-static struct cmd_sw cmd10_sw[] = {
-    {"iptables", cmd10_iptables},
-    {NULL, NULL}
-};
-
-static struct cmd_sw cmd11_sw[] = {
-    {"iptables", cmd11_iptables},
-    {NULL, NULL}
-};
-
-static struct cmd_sw cmd12_sw[] = {
-    {"iptables", cmd12_iptables},
-    {NULL, NULL}
-};
-
-static struct cmd_sw cmd13_sw[] = {
-    {"iptables", cmd13_iptables},
-    {NULL, NULL}
-};
-
-static struct cmd_sw cmd14_sw[] = {
-    {"iptables", cmd14_iptables},
-    {NULL, NULL}
-};
-
-static struct cmd_sw cmd15_sw[] = {
-    {"iptables", cmd15_iptables},
-    {NULL, NULL}
-};
-
-static struct cmd_sw cmd16_sw[] = {
-    {"ifconfig", cmd16_ifconfig},
-    {NULL, NULL}
-};
-
-static struct
-{
-    struct cmd_sw *sw;
-} cmd_sw_table[] = {
-    {cmd0_sw},
-    {cmd1_sw},
-    {cmd2_sw},
-    {cmd3_sw},
-    {cmd4_sw},
-    {cmd5_sw},
-    {cmd6_sw},
-    {cmd7_sw},
-    {cmd8_sw},
-    {cmd9_sw},
-    {cmd10_sw},
-    {cmd11_sw},
-    {cmd12_sw},
-    {cmd13_sw},
-    {cmd14_sw},
-    {cmd15_sw},
-    {cmd16_sw},
-    {0}
-};
-
-static void (*cmd[COMMANDS_NUM])(char* buf, size_t bufsize);
-
-static void bindCmds(void)
-{
-    char test[CONST_JANUS_BUFSIZE] = {0};
-
-    uint8_t i;
-
-    printf("checking sed command presence\n");
-    execOSCmd(test, sizeof (test), "which sed");
-    if (!strlen(test))
-        runtime_exception("unable to find sed command");
-
-    for (i = 0; cmd_sw_table[i].sw != NULL; ++i)
+    for(i = 0; mandatory_command[i].Ji != '0'; i++)
     {
-        printf("binding cmd %u to a system command\n", i);
-        cmd[i] = bindCmd(cmd_sw_table[i].sw);
-        if (cmd[i] == NULL)
-            runtime_exception("unable to bind cmd %u to a system command", i);
+        if(mandatory_command[i].Ji == req) 
+        {
+            printf("executing %s - %s\n", mandatory_command[i].info, mandatory_command[i].command);
+            system(mandatory_command[i].command);
+            break;
+        }
     }
+}
+
+char *get_sysmap_str(char req)
+{
+    uint32_t i;
+
+    for(i = 0; data_collect[i].Ji != '0'; i++)
+    {
+        if(data_collect[i].Ji == req) 
+        {
+            return data_collect[i].data;
+        }
+    }
+
+    /* handling of the three special character: K Z T */
+    switch(req)
+    {
+        case 'K': /* MTU value */
+            return "1200";
+            break;
+        case 'Z':
+            return CONST_JANUS_FAKEGW_IP;
+            break;
+        case 'T':
+            return "/dev/tun";
+            break;
+        default:
+            runtime_exception("has been searched the command index with '%c': this element doesn't exist\n", req);
+    }
+
+    /* make gcc happy */
+    return "janus win - and you never will see this line (except in github, gdb, etc...)";
+}
+
+void map_external_str(char req, char *data)
+{
+    switch(req)
+    {
+        case 'T':
+            if(T != NULL)
+                free(T);
+            T = strdup(data);
+            break;
+        case 'Z':
+            if(Z != NULL)
+                free(Z);
+            Z = strdup(data);
+            break;
+        case 'K':
+            if(K != NULL)
+                free(K);
+            K = strdup(data);
+            break;
+        default:
+            runtime_exception("has been searched the command index with '%c': this element could not be set\n", req);
+    }
+}
+
+/* only the MTU 'K' could be mapped with an int */
+void map_external_int(char req, uint32_t data)
+{
+    switch(req)
+    {
+        case 'K':
+            if(K != NULL)
+                free(K);
+            K = calloc(10, 1);
+            snprintf(K, 10, "%d", data);
+            break;
+        case 'Z':
+        case 'T':
+        default:
+            runtime_exception("set with command index with '%c' using an INT: invalid data or index\n", req);
+    }
+}
+
+void janus_conf_MTUfix(uint32_t diff)
+{
+    int32_t actvalue;
+
+    if(K == NULL)
+        runtime_exception("janus_conf_MTUfix call before MTU has been set\n");
+
+    actvalue = atoi(K);
+
+    if(actvalue < 0 || actvalue > 9000)
+        runtime_exception("Invalid value present in MTU (string [%s] int [%d])\n", K, actvalue);
+
+    actvalue -= diff;
+
+    if(actvalue < 512 )
+        runtime_exception("Invalid configuration, no MTU < 512 could be plausible in the Intertube\n");
+
+    free(K);
+    K = calloc(10, 1);
+    snprintf(K, 10, "%d", actvalue);
 }

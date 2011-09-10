@@ -11,12 +11,11 @@ if [ "$1" = "clean" ]; then
     rm -f *.o janus-macosx
 fi
 
-gcc -c  tun/tun-freebsd.c 
-gcc -c  packet_queue.c 
-# gcc -DMACOSX -c os_cmds.c
-# os_cmds.c must not be compiled because is #include(d)
-gcc -I /opt/local/include/ -c  janus.c 
-gcc -I /opt/local/include/ -c  main.c 
+gcc -c tun/tun-freebsd.c 
+gcc -c packet_queue.c 
+gcc -c os_cmds.c
+gcc -I /opt/local/include/ -c janus.c 
+gcc -I /opt/local/include/ -c main.c 
 
 gcc *.o -L/opt/local/lib -levent -lpcap -o janus-macosx 
 

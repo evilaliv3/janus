@@ -38,22 +38,9 @@
 
 #include <event.h>
 #include <pcap.h>
-
 #include "janus.h"
 #include "config_macros.h"
 #include "packet_queue.h"
-
-#ifndef ETH_HLEN
-#define ETH_HLEN              14
-#endif
-
-#ifndef ETH_ALEN
-#define ETH_ALEN              6
-#endif
-
-#ifndef ETH_P_IP
-#define ETH_P_IP              0x0800
-#endif
 
 #define J_CLOSE(p)            if (*p != -1) { close(*p); *p = -1; }
 #define J_PCAP_CLOSE(p)       if (*p != NULL) { pcap_close(*p); *p = NULL; }
@@ -80,10 +67,8 @@ static struct packets *pbufs;
 static pcap_t *capnet;
 static char *macpkt;
 
-static char str[STRINGS_NUM][CONST_JANUS_BUFSIZE];
-
-static char netif_send_hdr[ETH_HLEN];
-static char netif_recv_hdr[ETH_HLEN];
+static struct ethernet_header netif_send_hdr;
+static struct ethernet_header netif_recv_hdr;
 
 struct mitm_descriptor
 {
@@ -104,7 +89,8 @@ struct mitm_descriptor
 
 static struct mitm_descriptor mitm_desc[2];
 
-static void runtime_exception(const char *format, ...)
+/* symbol shared by janus.h able to be called from everywhere */
+void runtime_exception(const char *format, ...)
 {
     char error[CONST_JANUS_BUFSIZE] = {0};
 
@@ -116,13 +102,6 @@ static void runtime_exception(const char *format, ...)
     printf("runtime exception: %s\n", error);
     exit(1);
 }
-
-/*
- * HOLY SHIT - A C file INCLUDED IN ANOTHER ONE !!! OUUUUU!!!!
- *              
- *                WHAT WOULD KERNINGAM DO ? 
- */
-#include "os_cmds.c"
 
 static void setfdflag(int fd, long flags)
 {
@@ -138,7 +117,7 @@ static void setflflag(int fd, long flags)
         runtime_exception("unable to set fl flags %u on fd %u (F_GETFL/F_SETFL)", fd, flags);
 }
 
-static void parseMAC(const char *str, char *buf)
+static void parseMAC(const char *str, unsigned char *buf)
 {
     uint8_t i;
     uint32_t tmp_mac[ETH_ALEN];
@@ -180,7 +159,7 @@ static ssize_t netif_recv(int sockfd, struct packet *pbuf)
     if (header.len != header.caplen)
         return -1;
 
-    if ((packet != NULL) && !memcmp(packet, netif_recv_hdr, ETH_HLEN))
+    if ((packet != NULL) && !memcmp(&packet, &netif_recv_hdr, ETH_HLEN))
     {
         uint32_t len = header.len - ETH_HLEN;
         len = (len > pbuf_len) ? pbuf_len : len;
@@ -352,29 +331,32 @@ static uint8_t setupNET(void)
 
     char ebuf[PCAP_ERRBUF_SIZE];
 
-    capnet = pcap_open_live(str[STR_NET_IF], 65535, 0, -1, ebuf);
+    capnet = pcap_open_live(get_sysmap_str('2'), 65535, 0, -1, ebuf);
     if (capnet == NULL)
-        runtime_exception("unable to open pcap handle on interface %s", str[STR_NET_IF]);
+        runtime_exception("unable to open pcap handle on interface %s", get_sysmap_str('2'));
 
     net = pcap_fileno(capnet);
 
     setfdflag(net, FD_CLOEXEC);
 
     if (pcap_setnonblock(capnet, 1, ebuf) == -1)
-        runtime_exception("unable to set pcap handle in non blocking mode on interface %s", str[STR_NET_IF]);
+        runtime_exception("unable to set pcap handle in non blocking mode on interface %s", get_sysmap_str('2'));
 
     return net;
 }
 
 static uint8_t setupTUN(void)
 {
-    int tun = tun_open(str[STR_TUN_IF], sizeof (str[STR_TUN_IF]));
-    if (tun == -1)
-        runtime_exception("unable to open tun interface");
+    static char tun_name[10];
 
-    snprintf(str[STR_TUN_IP], sizeof (str[STR_TUN_IP]), CONST_JANUS_FAKEGW_IP);
+    int tun;
 
-    cmd[CMD_SETUP_TUN](NULL, 0);
+    if(( tun = tun_open(tun_name, strlen(tun_name))) == -1)
+        runtime_exception("unable to open tun interface: %s", tun_name);
+
+    map_external_str('T', tun_name);
+
+    sysmap_command('B');
 
     setfdflag(tun, FD_CLOEXEC);
 
@@ -408,84 +390,49 @@ static int setupMitmAttach(uint16_t port)
     return fd;
 }
 
+/* 
+ * in janus bootstrap the first and the second sections of the configuration commands
+ * are executed
+ */
 void JANUS_Bootstrap(void)
 {
     uint8_t i, j;
 
-    for (i = 0; i < STRINGS_NUM; i++)
-        str[i][0] = '\0';
+    if(!janus_commands_file_setup(fopen(OSSELECTED, "r")))
+        runtime_exception("unable to gathering system informations");
 
-    bindCmds();
-
-    /* execute the preliminary checks of the commads (first section of the commands file) */
-
+    /* now we had the commands stored and the infos detected */
     /* execute "informative" commands (second section in the commands file) */
 
-    cmd[CMD_GET_NETIF](str[STR_NET_IF], sizeof (str[STR_NET_IF]));
-    if (!strlen(str[STR_NET_IF]))
-        runtime_exception("unable to detect default gateway interface");
-
-    printf("detected default gateway interface: [%s]\n", str[STR_NET_IF]);
-
-    cmd[CMD_GET_NETIP](str[STR_NET_IP], sizeof (str[STR_NET_IP]));
-    if (!strlen(str[STR_NET_IP]))
-        runtime_exception("unable to detect ", str[STR_NET_IF], " ip address");
-
-    printf("detected local ip address on interface %s: [%s]\n", str[STR_NET_IF], str[STR_NET_IP]);
-
-    cmd[CMD_GET_NETMAC](str[STR_NET_MAC], sizeof (str[STR_NET_MAC]));
-    if (!strlen(str[STR_NET_MAC]))
-        runtime_exception("unable to detect ", str[STR_NET_IF], " mac address");
-
-    printf("detected local mac address on interface %s: [%s]\n", str[STR_NET_IF], str[STR_NET_MAC]);
-
-    cmd[CMD_GET_NETMTU](str[STR_NET_MTU], sizeof (str[STR_NET_MTU]));
-    if (!strlen(str[STR_NET_MTU]))
-        runtime_exception("unable to detect", str[STR_NET_IF], " mtu");
-
-    printf("detected default gateway MTU: [%s]\n", str[STR_NET_MTU]);
-
-    if(atoi(str[STR_NET_MTU]) + conf.mtu_fix < 0)
-        runtime_exception("cannot apply the specified fix of %d bytes", conf.mtu_fix);
-
-    snprintf(str[STR_TUN_MTU], sizeof (str[STR_TUN_MTU]), "%u", atoi(str[STR_NET_MTU]) + conf.mtu_fix);
+    /* MTU, handle the variable called "K", instanced after this fix */
+    /* janus_conf_MTUfix(conf.mtu_fix); */
 
     printf("applied the mtu fix for tunnel interface: [%d]\n", conf.mtu_fix);
-
-    cmd[CMD_GET_GWIP](str[STR_GW_IP], sizeof (str[STR_GW_IP]));
-    if (!strlen(str[STR_GW_IP]))
-        runtime_exception("unable to detect default gateway ip address");
-
-    printf("detected default gateway ip address: [%s]\n", str[STR_GW_IP]);
-
-    cmd[CMD_GET_GWMAC](str[STR_GW_MAC], sizeof (str[STR_GW_MAC]));
-    if (!strlen(str[STR_GW_MAC]))
-        runtime_exception("unable to detect default gateway mac address");
-
-    printf("detected default gateway mac address: [%s]\n", str[STR_GW_MAC]);
+    printf("detected default gateway ip address: [%s]\n", get_sysmap_str('1'));
+    printf("detected default gateway mac address: [%s]\n", get_sysmap_str('6'));
 
     capnet = NULL;
 
-    parseMAC(str[STR_GW_MAC], netif_send_hdr);
-    parseMAC(str[STR_NET_MAC], &netif_send_hdr[ETH_ALEN]);
+    /* acquire mac address inside the ethernet struct */
+    parseMAC(get_sysmap_str('6'), netif_send_hdr.dst_ethernet);
+    parseMAC(get_sysmap_str('5'), netif_send_hdr.src_ethernet);
 
-    memcpy(netif_recv_hdr, &netif_send_hdr[ETH_ALEN], ETH_ALEN);
-    memcpy(&netif_recv_hdr[ETH_ALEN], netif_send_hdr, ETH_ALEN);
+    memcpy(netif_recv_hdr.dst_ethernet, netif_send_hdr.src_ethernet, ETH_ALEN);
+    memcpy(netif_recv_hdr.src_ethernet, netif_send_hdr.dst_ethernet, ETH_ALEN);
 
-    *(uint16_t *)&netif_send_hdr[2 * ETH_ALEN] = htons(ETH_P_IP);
-    *(uint16_t *)&netif_recv_hdr[2 * ETH_ALEN] = htons(ETH_P_IP);
+    netif_send_hdr.link_type = netif_recv_hdr.link_type = htons(ETH_P_IP);
 
-    pbuf_len = atoi(str[STR_NET_MTU]);
+    /* this command: get_sysmap_str('K'), will return a runtime exception if was not
+     * initialized by janus_conf_MTUfix */
+    pbuf_len = atoi(get_sysmap_str('K'));
 
-    pbufs = pbufs_malloc(conf.pqueue_len, pbuf_len);
-    if (pbufs == NULL)
+    if ((pbufs = pbufs_malloc(conf.pqueue_len, pbuf_len)) == NULL)
         runtime_exception("unable to allocate memory for packet buffers");
 
-    macpkt = malloc(pbuf_len);
-    if (macpkt == NULL)
+    if ((macpkt = malloc(pbuf_len)) == NULL)
         runtime_exception("unable to allocate memory for the datalink packet buffer");
 
-    memcpy(macpkt, netif_send_hdr, ETH_HLEN);
+    memcpy(macpkt, &netif_send_hdr, ETH_HLEN);
 
     memset(&mitm_desc, 0, sizeof (mitm_desc));
 
@@ -494,13 +441,12 @@ void JANUS_Bootstrap(void)
     mitm_desc[TUN].fd_recv = tunif_recv;
     mitm_desc[TUN].fd_send = tunif_send;
 
-    for (i = 0; i < 2; ++i)
+    for (i = 0; i < 2; i++)
     {
-        mitm_desc[i].pqueue = queue_malloc(pbufs);
-        if (mitm_desc[i].pqueue == NULL)
+        if ((mitm_desc[i].pqueue = queue_malloc(pbufs)) == NULL)
             runtime_exception("unable to allocate memory for packet queues");
 
-        for (j = 0; j < 3; ++j)
+        for (j = 0; j < 3; j++)
             mitm_desc[i].fd[j] = -1;
 
         mitm_desc[i].first_mitm_connection = 1;
@@ -519,11 +465,25 @@ void JANUS_Init(void)
     mitm_desc[TUN].fd[FDMITMATTACH] = setupMitmAttach(conf.listen_port_out);
     mitm_desc[TUN].target = &mitm_desc[NET];
 
+    /* ;E delete the system default gateway */
+    sysmap_command('E');
+
+    /* ;7 add a default gateway */
+    sysmap_command('7');
+ 
+    /* ;9 add a firewall rules able to drop incoming traffic with src mac addr $5 */
+    sysmap_command('9');
+
+    /* ;C add a firewall rule able to NAT the traffic thru the tunnel */
+    sysmap_command('C');
+
+#if 0 /* old seq */
     cmd[CMD_DEL_REAL_DEFAULT_ROUTE](NULL, 0);
     cmd[CMD_ADD_FAKE_DEFAULT_ROUTE](NULL, 0);
     cmd[CMD_ADD_INCOMING_FILTER](NULL, 0);
     cmd[CMD_ADD_FORWARD_FILTER](NULL, 0);
     cmd[CMD_ADD_TUN_MASQUERADE](NULL, 0);
+#endif
 }
 
 void JANUS_EventLoop(void)
@@ -549,11 +509,25 @@ void JANUS_Reset(void)
 {
     uint8_t i, j;
 
+    /* ;8 delete the janus-fake default gateway */
+    sysmap_command('8');
+
+    /* ;G restore the system default gateway */
+    sysmap_command('G');
+
+    /* ;D delete the firewall rule insert with $C */
+    sysmap_command('D');
+
+    /* ;A delete the firewall rules insert with $9 */
+    sysmap_command('A');
+
+#if 0
     cmd[CMD_DEL_FAKE_DEFAULT_ROUTE](NULL, 0);
     cmd[CMD_ADD_REAL_DEFAULT_ROUTE](NULL, 0);
     cmd[CMD_DEL_INCOMING_FILTER](NULL, 0);
     cmd[CMD_DEL_FORWARD_FILTER](NULL, 0);
     cmd[CMD_DEL_TUN_MASQUERADE](NULL, 0);
+#endif
 
     J_PCAP_CLOSE(&capnet);
 
