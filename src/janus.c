@@ -38,8 +38,9 @@
 
 #include <event.h>
 #include <pcap.h>
+
 #include "janus.h"
-#include "jutils.h"
+#include "utils.h"
 #include "packet_queue.h"
 
 #define NET                   0

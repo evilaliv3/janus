@@ -23,7 +23,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "jutils.h"
+#include "utils.h"
 #include "packet_queue.h"
 
 struct packets* pbufs_malloc(uint16_t pkts_num, uint16_t pkts_size)

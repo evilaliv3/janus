@@ -25,8 +25,8 @@
 #include <stdlib.h>
 #include <ctype.h>
 
-#include "jutils.h"
 #include "janus.h"
+#include "utils.h"
 
 static uint8_t os_present, mn_present;
 
