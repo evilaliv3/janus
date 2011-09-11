@@ -43,8 +43,8 @@
 #include "utils.h"
 #include "packet_queue.h"
 
-#define NET                   0
-#define TUN                   1
+#define NET    0
+#define TUN    1
 
 enum mitm_t
 {
@@ -380,8 +380,7 @@ void JANUS_Bootstrap(void)
 {
     uint8_t i, j;
 
-    if(!janus_commands_file_setup(fopen(OSSELECTED, "r")))
-        runtime_exception("unable to gathering system informations");
+    janus_commands_file_setup(fopen(OSSELECTED, "r"));
 
     map_external_str('K', get_sysmap_str('4'));
 
@@ -390,10 +389,6 @@ void JANUS_Bootstrap(void)
 
     /* MTU, handle the variable called "K", instanced after this fix */
     janus_conf_MTUfix(conf.mtu_fix);
-
-    printf("applied the mtu fix for tunnel interface: [%d]\n", conf.mtu_fix);
-    printf("detected default gateway ip address: [%s]\n", get_sysmap_str('1'));
-    printf("detected default gateway mac address: [%s]\n", get_sysmap_str('6'));
 
     capnet = NULL;
 

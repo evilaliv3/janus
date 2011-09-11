@@ -43,12 +43,12 @@ struct janus_data_collect
     char *data;
 } data_collect[] = 
 {
-    { '1', "get default gateway ip address", '0', NULL },
-    { '2', "get the network interface linked to the gateway", '0', NULL },
-    { '3', "get the ip address of ", '2', NULL },
-    { '4', "get the MTU of ", '2', NULL },
-    { '5', "get the MAC address of ", '2', NULL },
-    { '6', "get the MAC address of ", '1', NULL },
+    { '1', "default gateway ip address", '0', NULL },
+    { '2', "network interface linked to the gateway", '0', NULL },
+    { '3', "ip address of ", '2', NULL },
+    { '4', "MTU of ", '2', NULL },
+    { '5', "MAC address of ", '2', NULL },
+    { '6', "MAC address of ", '1', NULL },
     { '0', NULL, 0, NULL }
 };
 
@@ -61,14 +61,14 @@ struct janus_mandatory_command
 } mandatory_command[] =
 {
     { '7', "add janus as gateway", NULL, NULL },
-    { '8', "delete janus from begin gateway", NULL, NULL },
-    { '9', "add filter dropping incoming traffic with orig GWs MAC", NULL, NULL },
-    { 'A', "delete the filter dropping ", NULL, NULL },
-    { 'B', "setup the tunnel", NULL, NULL },
+    { '8', "del janus as gateway", NULL, NULL },
+    { '9', "add iptables filter dropping incoming traffic with real default gw MAC", NULL, NULL },
+    { 'A', "del iptables filter dropping incoming traffic with real default gw mac", NULL, NULL },
+    { 'B', "add janus tunnel", NULL, NULL },
     { 'C', "add addictional rule for forwarded traffic", NULL, NULL },
-    { 'D', "delete the forward rule", NULL, NULL },
-    { 'E', "delete the real default gateway", NULL, NULL },
-    { 'G', "restore the real default gateway", NULL, NULL },
+    { 'D', "del addictional rule for forwarded traffic", NULL, NULL },
+    { 'E', "del real default gw as gateway", NULL, NULL },
+    { 'G', "add real default gw as gateway", NULL, NULL },
     { '0', NULL, NULL, NULL }
 };
 
@@ -249,7 +249,7 @@ static uint32_t handle_CheckCommand(char *line)
     {
         char *tmp = extract_simple(line);
 
-        printf("checking existence of command [%s]: ", tmp );
+        printf("[check] existence of command [%s]: ", tmp );
 
         /* we're using the static buffer of do_popen: don't relay on it */
         cmdret = which_command(tmp);
@@ -340,11 +340,11 @@ uint32_t collect_second_section(char *line, int lineNum)
             /* check if the command is not already memorized */
             if(data_collect[i].data != NULL)
             {
-                printf("Invalid line %d: command index '%c' already executed (is %s)\n", lineNum, data_collect[i].Ji, data_collect[i].data);
+                printf("invalid line %d: command index '%c' already executed (is %s)\n", lineNum, data_collect[i].Ji, data_collect[i].data);
                 return ERROR_PARSER;
             }
 
-            printf("%s", data_collect[i].info);
+            printf("[get_info] %s", data_collect[i].info);
 
             if( data_collect[i].pc_info != '0' )
             {
@@ -357,7 +357,7 @@ uint32_t collect_second_section(char *line, int lineNum)
                 }
 
                 /* else, the requested data for debug operations is correct */
-                printf("%s", previous_info);
+                printf(" %s", previous_info);
             }
 
             tmp = poash_data_extract(line);
@@ -377,12 +377,12 @@ uint32_t collect_second_section(char *line, int lineNum)
 
             if(data_collect[i].data == NULL)
             {
-                printf(": error in command at line [%d]: don't return output.\n", lineNum);
+                printf(": error in command at line [%d]: no output returned.\n", lineNum);
                 return ERROR_PARSER;
             }
             else
             {
-                printf(": output acquired [%s]\n", data_collect[i].data);
+                printf(": [%s]\n", data_collect[i].data);
                 return GOOD_PARSING;
             }
         }
@@ -406,7 +406,7 @@ uint32_t collect_third_section(char *line)
         {
             mandatory_command[i].acquired_string = poash_data_extract(line);
 
-            printf("%s: [%s]\n", mandatory_command[i].info, mandatory_command[i].acquired_string);
+            printf("[build_cmd] %s: [%s]\n", mandatory_command[i].info, mandatory_command[i].acquired_string);
 
             /* in this phase we only collect these commands, because we don't want change 
              * the OS now */
@@ -426,15 +426,12 @@ uint32_t collect_third_section(char *line)
  */
 
 /* the main parsing routine: return 0 on error, return 1 on OK */
-uint32_t janus_commands_file_setup(FILE *oscmds)
+void janus_commands_file_setup(FILE *oscmds)
 {
     uint32_t fndx = 0, i;
 
     if(oscmds == NULL)
-    {
-        printf("unable to open configuration file!\n");
-        return 0;
-    }
+        runtime_exception("unable to open configuration file\n");
 
     while(!feof(oscmds))
     {
@@ -464,10 +461,8 @@ uint32_t janus_commands_file_setup(FILE *oscmds)
         if( handle_OSName(rdLine) || handle_Maintainer(rdLine) )
             continue;
 
-        if (!os_present || !mn_present) {
-            printf("invalid compilation detected at %d. supported OS name and maintainer: required\n", fndx);
-            return 0;
-        }
+        if (!os_present || !mn_present)
+            runtime_exception("invalid compilation detected at %d. supported OS name and maintainer: required\n", fndx);
 
         /* 1st SECTION: the parsing of os-cmds/ require three stage analysis */
         parserRet = handle_CheckCommand(rdLine);
@@ -477,15 +472,11 @@ uint32_t janus_commands_file_setup(FILE *oscmds)
             case GOOD_PARSING:
                 continue;
             default: /* ERROR_PARSER */
-                printf("invalid command checked at line: %d\n", fndx);
-                return 0;
+                runtime_exception("invalid command checked at line: %d\n", fndx);
         }
 
         if(!line_sanity_check(rdLine)) 
-        {
-            printf("incorrect use of #..# at line %d\n", fndx);
-            return 0;
-        }
+            runtime_exception("incorrect use of #..# at line %d\n", fndx);
 
         /* 2nd SECTION: the data collection operation */
         parserRet = collect_second_section(rdLine, fndx);
@@ -495,8 +486,7 @@ uint32_t janus_commands_file_setup(FILE *oscmds)
             case GOOD_PARSING:
                 continue;
             default: /* ERROR_PARSER */
-                printf("unable to collect information from command at line: %d\n", fndx);
-                return 0;
+                runtime_exception("unable to collect information from command at line: %d\n", fndx);
         }
 
         /* 3rd SECTION: the system interfacing */
@@ -507,15 +497,11 @@ uint32_t janus_commands_file_setup(FILE *oscmds)
             case GOOD_PARSING:
                 continue;
             default: /* ERROR_PARSER */
-                printf("unable to acquire the mandatory command at line: %d\n", fndx);
-                return 0;
+                runtime_exception("unable to acquire the mandatory command at line: %d\n", fndx);
         }
 
-        printf("Invalid line %d: unable to handle [%s]\n", fndx, rdLine);
-        return 0;
+        runtime_exception("invalid line %d: unable to handle [%s]\n", fndx, rdLine);
     }
-
-    return 1;
 }
 
 void sysmap_command(char req)
@@ -528,7 +514,7 @@ void sysmap_command(char req)
         {
             mandatory_command[i].command = expand_command(mandatory_command[i].acquired_string); 
 
-            printf("+ %s [%s]\n", mandatory_command[i].info, mandatory_command[i].command);
+            printf("[exec_cmd] %s [%s]\n", mandatory_command[i].info, mandatory_command[i].command);
 
             /* todo: could be useful use a different popen (different from do_popen) and check
              * if someshit is written on strerr ? */
@@ -613,7 +599,7 @@ void map_external_int(char req, uint32_t data)
     }
 }
 
-void janus_conf_MTUfix(uint32_t diff)
+void janus_conf_MTUfix(int16_t fix)
 {
     int32_t actvalue;
 
@@ -625,7 +611,7 @@ void janus_conf_MTUfix(uint32_t diff)
     if(actvalue < 0 || actvalue > 9000)
         runtime_exception("invalid value present in MTU (string [%s] int [%d])\n", K, actvalue);
 
-    actvalue -= diff;
+    actvalue += fix;
 
     if(actvalue < 512 || actvalue > 9000)
         runtime_exception("invalid configuration, no MTU < 512 or > 9000 could pe plausible in the Intertube (int [%d])\n", actvalue);
@@ -634,6 +620,8 @@ void janus_conf_MTUfix(uint32_t diff)
 
     J_CALLOC(K, 10, 1);
     snprintf(K, 10, "%d", actvalue);
+
+    printf("[set] applied the mtu fix for tunnel interface: [%d]\n", fix);
 }
 
 void free_cmd_structures(void)

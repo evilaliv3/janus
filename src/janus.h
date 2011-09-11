@@ -87,13 +87,13 @@ void JANUS_EventLoop(void);
 int tun_open(char *namebuf, size_t namebufsize);
 
 /* these are the exported symbol from os_cmds.c */
-uint32_t janus_commands_file_setup(FILE *);
+void janus_commands_file_setup(FILE *);
 void sysmap_command(char);
 char *get_sysmap_str(char);
 uint32_t get_sysmap_int(char); 
 void map_external_int(char, uint32_t);
 void map_external_str(char, char *);
 void free_cmd_structures(void);
-void janus_conf_MTUfix(uint32_t);
+void janus_conf_MTUfix(int16_t);
 
 #endif /* JANUS_H */
