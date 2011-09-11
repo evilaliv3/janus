@@ -23,42 +23,23 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#include "jutils.h"
 #include "packet_queue.h"
 
 struct packets* pbufs_malloc(uint16_t pkts_num, uint16_t pkts_size)
 {
+    struct packets *pkts;
+
     uint16_t i;
 
-    struct packets *pkts = malloc(sizeof (struct packets));
-    if (pkts == NULL)
-        return NULL;
+    J_MALLOC(pkts, sizeof (struct packets));
 
     pkts->num = pkts_num;
     pkts->size = pkts_size;
-
-    pkts->pdescriptor = malloc(pkts->num * sizeof (struct packet));
-    if (pkts->pdescriptor == NULL)
-    {
-        free(pkts);
-        return NULL;
-    }
-
-    pkts->pmemory = malloc(pkts->num * pkts->size);
-    if (pkts->pmemory == NULL)
-    {
-        free(pkts->pdescriptor);
-        free(pkts);
-        return NULL;
-    }
-
     pkts->free_packets = queue_malloc(pkts);
-    if (pkts->free_packets == NULL)
-    {
-        free(pkts->pdescriptor);
-        free(pkts->pmemory);
-        free(pkts);
-        return NULL;
-    }
+
+    J_MALLOC(pkts->pdescriptor, pkts->num * sizeof (struct packet));
+    J_MALLOC(pkts->pmemory, pkts->num * pkts->size);
 
     for (i = 0; i < pkts->num; ++i)
     {
@@ -90,16 +71,10 @@ void pbuf_release(struct packets *pkts, struct packet *pkt)
 
 struct packet_queue* queue_malloc(struct packets *pkts)
 {
-    struct packet_queue* pq = malloc(sizeof (struct packet_queue));
-    if (pq == NULL)
-        return NULL;
+    struct packet_queue* pq;
 
-    pq->records = malloc(pkts->num * sizeof (pkts->num));
-    if (pq->records == NULL)
-    {
-        free(pq);
-        return NULL;
-    }
+    J_MALLOC(pq, sizeof (struct packet_queue));
+    J_MALLOC(pq->records, pkts->num * sizeof (pkts->num));
 
     pq->pkts = pkts;
 

@@ -85,16 +85,15 @@ void JANUS_EventLoop(void);
 
 /* this implementation is system dependen */
 int tun_open(char *namebuf, size_t namebufsize);
-void runtime_exception(const char *, ...);
 
 /* these are the exported symbol from os_cmds.c */
-int janus_commands_file_setup(FILE *);
+uint32_t janus_commands_file_setup(FILE *);
 void sysmap_command(char);
 char *get_sysmap_str(char);
 uint32_t get_sysmap_int(char); 
 void map_external_int(char, uint32_t);
 void map_external_str(char, char *);
+void free_cmd_structures(void);
 void janus_conf_MTUfix(uint32_t);
-
 
 #endif /* JANUS_H */

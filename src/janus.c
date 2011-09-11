@@ -39,13 +39,8 @@
 #include <event.h>
 #include <pcap.h>
 #include "janus.h"
-#include "config_macros.h"
+#include "jutils.h"
 #include "packet_queue.h"
-
-#define J_CLOSE(p)            if (*p != -1) { close(*p); *p = -1; }
-#define J_PCAP_CLOSE(p)       if (*p != NULL) { pcap_close(*p); *p = NULL; }
-#define J_BUFFEREVENT_FREE(p) if (*p != NULL) { bufferevent_free(*p); *p = NULL; }
-#define J_PBUF_RELEASE(p)     if (*p != NULL) { pbuf_release(pbufs, *p); *p = NULL; }
 
 #define NET                   0
 #define TUN                   1
@@ -88,20 +83,6 @@ struct mitm_descriptor
 };
 
 static struct mitm_descriptor mitm_desc[2];
-
-/* symbol shared by janus.h able to be called from everywhere */
-void runtime_exception(const char *format, ...)
-{
-    char error[CONST_JANUS_BUFSIZE] = {0};
-
-    va_list arguments;
-    va_start(arguments, format);
-    vsnprintf(error, sizeof (error), format, arguments);
-    va_end(arguments);
-
-    printf("runtime exception: %s\n", error);
-    exit(1);
-}
 
 static void setfdflag(int fd, long flags)
 {
@@ -159,9 +140,9 @@ static ssize_t netif_recv(int sockfd, struct packet *pbuf)
     if (header.len != header.caplen)
         return -1;
 
-    if ((packet != NULL) && !memcmp(&packet, &netif_recv_hdr, ETH_HLEN))
+    if ((packet != NULL) && !memcmp(packet, &netif_recv_hdr, ETH_HLEN))
     {
-        uint32_t len = header.len - ETH_HLEN;
+        int32_t len = header.len - ETH_HLEN;
         len = (len > pbuf_len) ? pbuf_len : len;
         memcpy(pbuf->buf, packet + ETH_HLEN, len);
         return len;
@@ -401,11 +382,13 @@ void JANUS_Bootstrap(void)
     if(!janus_commands_file_setup(fopen(OSSELECTED, "r")))
         runtime_exception("unable to gathering system informations");
 
+    map_external_str('K', get_sysmap_str('4'));
+
     /* now we had the commands stored and the infos detected */
     /* execute "informative" commands (second section in the commands file) */
 
     /* MTU, handle the variable called "K", instanced after this fix */
-    /* janus_conf_MTUfix(conf.mtu_fix); */
+    janus_conf_MTUfix(conf.mtu_fix);
 
     printf("applied the mtu fix for tunnel interface: [%d]\n", conf.mtu_fix);
     printf("detected default gateway ip address: [%s]\n", get_sysmap_str('1'));
@@ -426,11 +409,9 @@ void JANUS_Bootstrap(void)
      * initialized by janus_conf_MTUfix */
     pbuf_len = atoi(get_sysmap_str('K'));
 
-    if ((pbufs = pbufs_malloc(conf.pqueue_len, pbuf_len)) == NULL)
-        runtime_exception("unable to allocate memory for packet buffers");
+    pbufs = pbufs_malloc(conf.pqueue_len, pbuf_len);
 
-    if ((macpkt = malloc(pbuf_len)) == NULL)
-        runtime_exception("unable to allocate memory for the datalink packet buffer");
+    J_MALLOC(macpkt, pbuf_len);
 
     memcpy(macpkt, &netif_send_hdr, ETH_HLEN);
 
@@ -441,12 +422,11 @@ void JANUS_Bootstrap(void)
     mitm_desc[TUN].fd_recv = tunif_recv;
     mitm_desc[TUN].fd_send = tunif_send;
 
-    for (i = 0; i < 2; i++)
+    for (i = 0; i < 2; ++i)
     {
-        if ((mitm_desc[i].pqueue = queue_malloc(pbufs)) == NULL)
-            runtime_exception("unable to allocate memory for packet queues");
+        mitm_desc[i].pqueue = queue_malloc(pbufs);
 
-        for (j = 0; j < 3; j++)
+        for (j = 0; j < 3; ++j)
             mitm_desc[i].fd[j] = -1;
 
         mitm_desc[i].first_mitm_connection = 1;
@@ -474,16 +454,8 @@ void JANUS_Init(void)
     /* ;9 add a firewall rules able to drop incoming traffic with src mac addr $5 */
     sysmap_command('9');
 
-    /* ;C add a firewall rule able to NAT the traffic thru the tunnel */
+    /* ;C add a firewall rule able to NAT the traffic through the tunnel */
     sysmap_command('C');
-
-#if 0 /* old seq */
-    cmd[CMD_DEL_REAL_DEFAULT_ROUTE](NULL, 0);
-    cmd[CMD_ADD_FAKE_DEFAULT_ROUTE](NULL, 0);
-    cmd[CMD_ADD_INCOMING_FILTER](NULL, 0);
-    cmd[CMD_ADD_FORWARD_FILTER](NULL, 0);
-    cmd[CMD_ADD_TUN_MASQUERADE](NULL, 0);
-#endif
 }
 
 void JANUS_EventLoop(void)
@@ -521,14 +493,6 @@ void JANUS_Reset(void)
     /* ;A delete the firewall rules insert with $9 */
     sysmap_command('A');
 
-#if 0
-    cmd[CMD_DEL_FAKE_DEFAULT_ROUTE](NULL, 0);
-    cmd[CMD_ADD_REAL_DEFAULT_ROUTE](NULL, 0);
-    cmd[CMD_DEL_INCOMING_FILTER](NULL, 0);
-    cmd[CMD_DEL_FORWARD_FILTER](NULL, 0);
-    cmd[CMD_DEL_TUN_MASQUERADE](NULL, 0);
-#endif
-
     J_PCAP_CLOSE(&capnet);
 
     for (i = 0; i < 2; ++i)
@@ -563,4 +527,6 @@ void JANUS_Shutdown(void)
     pbufs_free(pbufs);
 
     free(macpkt);
+
+    free_cmd_structures();
 }
