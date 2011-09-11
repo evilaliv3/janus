@@ -6,15 +6,15 @@ M SniffJoke team - mailing list sniffjoke@sikurezza.org
 C ifconfig
 C route
 C arp
-;C arping
 C iptables
 C awk
 C line
 
 ; 2nd SECTION
 
-; SPECIAL: ~Z mean: the fake gateway ip address
-; SPECIAL: ~K mean: the fake mtu value
+; SPECIAL: ~T means: the tunnel interface name
+; SPECIAL: ~Z means: the fake gateway ip address
+; SPECIAL: ~K means: the fake mtu value
 ;         these value are specify by the users or hardcoded, therefore are treated differently
 
 ;1 get the default gateway ip address

@@ -201,7 +201,10 @@ static uint32_t handle_OSName(char *line)
     {
         char *tmp = extract_simple(line);
 
-        ++os_present;
+        if(os_present)
+            runtime_exception("repeated N param inside configuration file");
+
+        os_present = 1;
         printf(". configuration file written to work in: %s\n", tmp );
         
         free(tmp);
@@ -218,7 +221,11 @@ static uint32_t handle_Maintainer(char *line)
     {
         char *tmp = extract_simple(line);
 
-        ++mn_present;
+        if(mn_present)
+            runtime_exception("repeated M param inside configuration file");
+
+        mn_present = 1;
+
         printf(". configuration file written by: %s, contact in case of errors\n", tmp );
 
         free(tmp);
@@ -258,12 +265,12 @@ static uint32_t handle_CheckCommand(char *line)
 
         if(cmdret == NULL || strlen(cmdret) == 0)
         {
-            printf(" executable not found!!\n");
+            printf("executable not found\n");
             ret =  ERROR_PARSER;
         }
         else
         {
-            printf(" found at %s\n", cmdret);
+            printf("found at %s\n", cmdret);
             ret = GOOD_PARSING;
         }
 
