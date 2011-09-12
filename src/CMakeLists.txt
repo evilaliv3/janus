@@ -1,9 +1,11 @@
 IF("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
     SET(TUN "tun/tun-linux")
-ELSE("${CMAKE_SYSTEM_NAME}" MATCHES "FreeBSD")
+ELSEIF("${CMAKE_SYSTEM_NAME}" MATCHES "FreeBSD")
+    SET(TUN "tun/tun-freebsd")
+ELSEIF("${CMAKE_SYSTEM_NAME}" MATCHES "Darwin")
     SET(TUN "tun/tun-freebsd")
 ELSE()
-    MESSAGE(FATAL_ERROR "${CMAKE_SYSTEM_NAME} system not tested yet")
+    MESSAGE(FATAL_ERROR "${CMAKE_SYSTEM_NAME} OS not tested yet, MAY require a system dependent tunnel implementation")
 ENDIF("${CMAKE_SYSTEM_NAME}" MATCHES "Linux")
 
 ADD_EXECUTABLE(

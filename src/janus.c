@@ -313,9 +313,9 @@ static uint8_t setupNET(void)
 
     char ebuf[PCAP_ERRBUF_SIZE];
 
-    capnet = pcap_open_live(get_sysmap_str('2'), 65535, 0, -1, ebuf);
+    capnet = pcap_open_live(get_sysmap_str('2'), 65535, 0, 0, ebuf);
     if (capnet == NULL)
-        runtime_exception("unable to open pcap handle on interface %s", get_sysmap_str('2'));
+        runtime_exception("unable to open pcap handle on interface %s: %s ", get_sysmap_str('2'), ebuf);
 
     net = pcap_fileno(capnet);
 
@@ -334,7 +334,7 @@ static uint8_t setupTUN(void)
     int tun;
 
     if(( tun = tun_open(tun_name, 10)) == -1)
-        runtime_exception("unable to open tun interface: %s", tun_name);
+        runtime_exception("unable to open tun interface: %s: %s", tun_name, strerror(errno));
 
     map_external_str('T', tun_name);
 

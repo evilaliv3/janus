@@ -5,8 +5,7 @@ M vecna <vecna@delirandom.net>
 C ifconfig
 C route
 C arp
-C arping
-C iptables
+C ipfw 
 C awk
 C sed
 
@@ -33,35 +32,33 @@ I4 #ifconfig ~2 | grep " mtu " | sed -es/.*mtu\ //#
 I5 #ifconfig ~2 | grep ether | sed -es/.*ether\ //#
 
 ;6 get the mac address of $1
-I6 #arp -n 172.20.119.1 | sed -es/.*at\ // | sed -es/\ on.*//#
+I6 #arp -n ~1 | sed -es/.*at\ // | sed -es/\ on.*//#
 
 ; 3rd SECTION
 
 ;7 add the janus-fake default gateway
-S7 #route add default gw ~Z dev ~7#
+S7 #route change default gw ~Z#
 
 ;8 delete the janus-fake default gateway
-S8 #route del default gw ~Z dev ~7#
+S8 ##
 
 ;9 add a firewall rules able to drop incoming traffic with src mac addr $6
-S9 #iptables -A FORWARD -i ~2 -m mac --mac-source ~6 -j DROP#
+S9 #ipfw add drop ip from any to any mac ~6 any#
 
 ;A delete the firewall rules insert with $9
-SA #iptables -D FORWARD -i ~2 -m mac --mac-source ~6 -j DROP#
+SA #ipfw del drop ip from any to any mac ~6 any#
 
 ;B setup the $6
 SB #ifconfig ~6 ~2 pointopoint ~Z mtu ~K#
 
 ;C add a firewall rule able to NAT the traffic thru the tunnel $B
-SC #iptables -A POSTROUTING -o ~6 -t nat -j MASQUERADE#
+SC ##
 
 ;D delete the firewall rule insert with $D
-SD #iptables -D POSTROUTING -o ~6 -t nat -j MASQUERADE#
+SD ##
 
 ;E delete the system default gateway
-SE #route del default#
+SE ##
 
 ;G restore the system default gateway
-SG #route add default gw ~1#
-
-
+SG #route change default gw ~1#

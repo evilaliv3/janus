@@ -12,6 +12,12 @@ Janus overrides the actual routing table, creating a fake gateway with the aim t
 
     If you're using a package, could have provided itself with the appropriate dependencies.
 
+# Mac OSX Requirements
+
+    Because of Darwin TUN/TAP absence by default, you need install this external support:
+    http://tuntaposx.sourceforge.net/download.xhtml
+    Anyway, at the moment the MacOSX supports don't work, for both an ipfw and /dev/tun issues.
+
 # Below is an example of Janus usage starting from this initial routing table:
 
     root@linux# route -n
