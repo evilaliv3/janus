@@ -6,13 +6,15 @@ uid                  Giovanni Pellerano <giovanni.pellerano@evilaliv3.org>
 sub   4096g/50A7F150 2009-05-10 [expires: 2014-05-09]
 ----------------------------------------------------------------------------
 
-vecna <vecna@delirandom.net>
-
-pub   1024D/C6765430 2009-08-25 [expires: 2011-08-25]
+pub   1024D/C6765430 2009-08-25 [expires: 2012-10-03]
       Key fingerprint = 341F 1A8C E2B4 F4F4 174D  7C21 B842 093D C676 5430
+uid                  vecna (a Random GlobaLeks Developer) <vecna@globaleaks.org>
 uid                  vecna <vecna@s0ftpj.org>
+uid                  Claudio <vecna@sikurezza.org>
 uid                  vecna <vecna@delirandom.net>
-sub   3072g/E8157737 2009-08-25 [expires: 2011-08-25]
+uid                  Planck's constant (6.626068) <vecna@winstonsmith.org>
+sub   3072g/E8157737 2009-08-25 [expires: 2012-10-03]
+
 ----------------------------------------------------------------------------
 
 GITHUB:
