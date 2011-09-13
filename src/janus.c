@@ -36,6 +36,8 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 
+#include <linux/ip.h>
+
 #include <event.h>
 #include <pcap.h>
 
@@ -43,8 +45,8 @@
 #include "utils.h"
 #include "packet_queue.h"
 
-#define NET    0
-#define TUN    1
+#define NETWORK    0
+#define KROWTEN    1
 
 enum mitm_t
 {
@@ -65,16 +67,21 @@ static char *macpkt;
 
 static struct ethernet_header netif_send_hdr;
 static struct ethernet_header netif_recv_hdr;
+static struct ethernet_header fake_send_hdr;
+
+struct event net_ev_recv;
+struct sockaddr_in krowten_sin;
+
+struct packet *net_pbuf_recv;
 
 struct mitm_descriptor
 {
     int fd[3]; /* FDIF | FDMITM | FDMITMATTACH */
     struct event ev_send; /* FDIF */
-    struct event ev_recv[3]; /* FDIF | FDMITM | FDMITMATTACH */
-    ssize_t(*fd_recv)(int sockfd, struct packet * pbuf); /* FDIF */
+    struct event ev_attach;
     ssize_t(*fd_send)(int sockfd, struct packet * pbuf); /* FDIF */
-    struct packet * pbuf_recv[2]; /* FDIF | FDMITM */
-    struct packet* pbuf_send; /* FDIF */
+    struct packet *pbuf_send; /* FDIF */
+    struct packet *pbuf_recv; /* FDMITM */
     struct packet_queue * pqueue; /* FDIF */
     struct bufferevent * mitm_bufferevent; /* FDMITM */
 
@@ -133,27 +140,12 @@ static void bufferedWrite(struct mitm_descriptor *desc, enum mitm_t i, struct pa
     }
 }
 
-static ssize_t netif_recv(int sockfd, struct packet *pbuf)
+static ssize_t send_in(int sockfd, struct packet *pbuf)
 {
-    struct pcap_pkthdr header;
-    const u_char * const packet = pcap_next(capnet, &header);
-
-    if (header.len != header.caplen)
-        return -1;
-
-    if ((packet != NULL) && !memcmp(packet, &netif_recv_hdr, ETH_HLEN))
-    {
-        int32_t len = header.len - ETH_HLEN;
-        len = (len > pbuf_len) ? pbuf_len : len;
-        memcpy(pbuf->buf, packet + ETH_HLEN, len);
-        return len;
-    }
-
-    errno = EAGAIN;
-    return -1;
+    return sendto(mitm_desc[KROWTEN].fd[FDIF], pbuf->buf, pbuf->size, 0, (struct sockaddr *) &krowten_sin, sizeof (krowten_sin));
 }
 
-static ssize_t netif_send(int sockfd, struct packet *pbuf)
+static ssize_t send_out(int sockfd, struct packet *pbuf)
 {
     memcpy(&macpkt[ETH_HLEN], pbuf->buf, pbuf->size);
 
@@ -163,37 +155,32 @@ static ssize_t netif_send(int sockfd, struct packet *pbuf)
         return -1;
 }
 
-static ssize_t tunif_recv(int sockfd, struct packet *pbuf)
-{
-    return read(sockfd, pbuf->buf, pbuf_len);
-}
-
-static ssize_t tunif_send(int sockfd, struct packet *pbuf)
-{
-    return write(sockfd, pbuf->buf, pbuf->size);
-}
-
 static void recv_cb(int f, short event, void *arg)
 {
-    struct mitm_descriptor * const desc = arg;
-
-    struct packet * * const pbuf = &desc->pbuf_recv[FDIF];
-
-    if ((*pbuf != NULL) || ((*pbuf = pbuf_acquire(pbufs)) != NULL))
+    if ((net_pbuf_recv != NULL) || ((net_pbuf_recv = pbuf_acquire(pbufs)) != NULL))
     {
-        ssize_t ret = desc->fd_recv(desc->fd[FDIF], *pbuf);
+        struct pcap_pkthdr header;
+        const u_char * const packet = pcap_next(capnet, &header);
 
-        if (ret > 0)
+        if ((packet != NULL) || (header.len != header.caplen))
         {
-            (*pbuf)->size = ret;
-            bufferedWrite(desc, FDIF, *pbuf);
-            *pbuf = NULL;
+            net_pbuf_recv->size = header.len - ETH_HLEN;
+            net_pbuf_recv->size = (net_pbuf_recv->size > pbuf_len) ? pbuf_len : net_pbuf_recv->size;
+            memcpy(net_pbuf_recv->buf, packet + ETH_HLEN, net_pbuf_recv->size);
+
+            if(!memcmp(packet, &netif_recv_hdr, ETH_HLEN))
+                bufferedWrite(&mitm_desc[NETWORK], FDIF, net_pbuf_recv);
+
+            else if(!memcmp(packet, &fake_send_hdr, ETH_HLEN))
+                bufferedWrite(&mitm_desc[KROWTEN], FDIF, net_pbuf_recv);
+
+            net_pbuf_recv = NULL;
+
+            return;
         }
-        else
-        {
-            if (errno != EAGAIN)
-                event_loopbreak();
-        }
+
+        if (errno != EAGAIN)
+            event_loopbreak();
     }
 }
 
@@ -228,14 +215,14 @@ static void mitm_rs_error(struct mitm_descriptor* desc)
     J_CLOSE(&desc->fd[FDMITM]);
     J_BUFFEREVENT_FREE(&desc->mitm_bufferevent);
 
-    event_add(&desc->ev_recv[FDMITMATTACH], NULL);
+    event_add(&desc->ev_attach, NULL);
 }
 
 static void mitmrecv_cb(struct bufferevent *sabe, void *arg)
 {
     struct mitm_descriptor * const desc = arg;
 
-    struct packet * * const pbuf = &desc->pbuf_recv[FDMITM];
+    struct packet * * const pbuf = &desc->pbuf_recv;
 
     if (*pbuf == NULL)
     {
@@ -292,7 +279,7 @@ static void mitmattach_cb(int f, short event, void *arg)
             desc->first_mitm_connection = 0;
         }
     
-        event_del(&desc->ev_recv[FDMITMATTACH]);
+        event_del(&desc->ev_attach);
         setfdflag(desc->fd[FDMITM], FD_CLOEXEC);
         setflflag(desc->fd[FDMITM], O_NONBLOCK);
     }
@@ -305,44 +292,6 @@ static void mitmattach_cb(int f, short event, void *arg)
     desc->mitm_bufferevent = bufferevent_new(desc->fd[FDMITM], mitmrecv_cb, NULL, mitm_rs_error_cb, desc);
     bufferevent_setwatermark(desc->mitm_bufferevent, EV_READ, 2, 2);
     bufferevent_enable(desc->mitm_bufferevent, EV_READ);
-}
-
-static uint8_t setupNET(void)
-{
-    int net = -1;
-
-    char ebuf[PCAP_ERRBUF_SIZE];
-
-    capnet = pcap_open_live(get_sysmap_str('2'), 65535, 0, 0, ebuf);
-    if (capnet == NULL)
-        runtime_exception("unable to open pcap handle on interface %s: %s ", get_sysmap_str('2'), ebuf);
-
-    net = pcap_fileno(capnet);
-
-    setfdflag(net, FD_CLOEXEC);
-
-    if (pcap_setnonblock(capnet, 1, ebuf) == -1)
-        runtime_exception("unable to set pcap handle in non blocking mode on interface %s", get_sysmap_str('2'));
-
-    return net;
-}
-
-static uint8_t setupTUN(void)
-{
-    static char tun_name[10];
-
-    int tun;
-
-    if(( tun = tun_open(tun_name, 10)) == -1)
-        runtime_exception("unable to open tun interface: %s: %s", tun_name, strerror(errno));
-
-    map_external_str('T', tun_name);
-
-    sysmap_command('B');
-
-    setfdflag(tun, FD_CLOEXEC);
-
-    return tun;
 }
 
 static int setupMitmAttach(uint16_t port)
@@ -372,6 +321,46 @@ static int setupMitmAttach(uint16_t port)
     return fd;
 }
 
+static void setupNETWORK(void)
+{
+    char ebuf[PCAP_ERRBUF_SIZE];
+
+    capnet = pcap_open_live(get_sysmap_str('2'), 65535, 0, 0, ebuf);
+    if (capnet == NULL)
+        runtime_exception("unable to open pcap handle on interface %s: %s ", get_sysmap_str('2'), ebuf);
+
+    mitm_desc[NETWORK].fd[FDIF] = pcap_fileno(capnet);
+
+    setfdflag(mitm_desc[NETWORK].fd[FDIF], FD_CLOEXEC);
+
+    if (pcap_setnonblock(capnet, 1, ebuf) == -1)
+        runtime_exception("unable to set pcap handle in non blocking mode on interface %s", get_sysmap_str('2'));
+
+    mitm_desc[NETWORK].fd[FDMITMATTACH] = setupMitmAttach(conf.listen_port_in);
+    mitm_desc[NETWORK].target = &mitm_desc[KROWTEN];
+}
+
+static void setupKROWTEN(void)
+{
+    const int one = 1;
+    const int *val = &one;
+
+    mitm_desc[KROWTEN].fd[FDIF] = socket (AF_INET, SOCK_RAW, IPPROTO_RAW);
+
+    if (mitm_desc[KROWTEN].fd[FDIF] == -1)
+        runtime_exception("unable to setup raw socket for local delivery: %s", strerror(errno));
+
+    setsockopt(mitm_desc[KROWTEN].fd[FDIF], IPPROTO_IP, IP_HDRINCL, val, sizeof (one));
+
+    memset(&krowten_sin, 0, sizeof(krowten_sin));
+    krowten_sin.sin_family = AF_INET;
+
+    inet_aton(get_sysmap_str('3'), (struct in_addr *) &krowten_sin.sin_addr.s_addr);
+
+    mitm_desc[KROWTEN].fd[FDMITMATTACH] = setupMitmAttach(conf.listen_port_out);
+    mitm_desc[KROWTEN].target = &mitm_desc[NETWORK];
+}
+
 /* 
  * in janus bootstrap the first and the second sections of the configuration commands
  * are executed
@@ -382,13 +371,8 @@ void JANUS_Bootstrap(void)
 
     janus_commands_file_setup(fopen(OSSELECTED, "r"));
 
-    map_external_str('K', get_sysmap_str('4'));
-
     /* now we had the commands stored and the infos detected */
     /* execute "informative" commands (second section in the commands file) */
-
-    /* MTU, handle the variable called "K", instanced after this fix */
-    janus_conf_MTUfix(conf.mtu_fix);
 
     capnet = NULL;
 
@@ -399,11 +383,12 @@ void JANUS_Bootstrap(void)
     memcpy(netif_recv_hdr.dst_ethernet, netif_send_hdr.src_ethernet, ETH_ALEN);
     memcpy(netif_recv_hdr.src_ethernet, netif_send_hdr.dst_ethernet, ETH_ALEN);
 
-    netif_send_hdr.link_type = netif_recv_hdr.link_type = htons(ETH_P_IP);
+    memcpy(fake_send_hdr.dst_ethernet, netif_send_hdr.src_ethernet, ETH_ALEN);
+    memcpy(fake_send_hdr.src_ethernet, netif_send_hdr.src_ethernet, ETH_ALEN);
 
-    /* this command: get_sysmap_str('K'), will return a runtime exception if was not
-     * initialized by janus_conf_MTUfix */
-    pbuf_len = atoi(get_sysmap_str('K'));
+    netif_send_hdr.link_type = netif_recv_hdr.link_type = fake_send_hdr.link_type = htons(ETH_P_IP);
+
+    pbuf_len = atoi(get_sysmap_str('4'));
 
     pbufs = pbufs_malloc(conf.pqueue_len, pbuf_len);
 
@@ -413,10 +398,8 @@ void JANUS_Bootstrap(void)
 
     memset(&mitm_desc, 0, sizeof (mitm_desc));
 
-    mitm_desc[NET].fd_recv = netif_recv;
-    mitm_desc[NET].fd_send = netif_send;
-    mitm_desc[TUN].fd_recv = tunif_recv;
-    mitm_desc[TUN].fd_send = tunif_send;
+    mitm_desc[NETWORK].fd_send = send_out;
+    mitm_desc[KROWTEN].fd_send = send_in;
 
     for (i = 0; i < 2; ++i)
     {
@@ -433,25 +416,17 @@ void JANUS_Init(void)
 {
     ev_base = event_init();
 
-    mitm_desc[NET].fd[FDIF] = setupNET();
-    mitm_desc[NET].fd[FDMITMATTACH] = setupMitmAttach(conf.listen_port_in);
-    mitm_desc[NET].target = &mitm_desc[TUN];
+    setupNETWORK();
+    setupKROWTEN();
 
-    mitm_desc[TUN].fd[FDIF] = setupTUN();
-    mitm_desc[TUN].fd[FDMITMATTACH] = setupMitmAttach(conf.listen_port_out);
-    mitm_desc[TUN].target = &mitm_desc[NET];
-
-    /* ;E delete the system default gateway */
-    sysmap_command('E');
-
-    /* ;7 add a default gateway */
+    /* ;7 add a fake arp entry */
     sysmap_command('7');
  
-    /* ;9 add a firewall rules able to drop incoming traffic with src mac addr $5 */
+    /* ;9 add a firewall rule able to drop incoming traffic with src mac addr $6 */
     sysmap_command('9');
 
-    /* ;C add a firewall rule able to NAT the traffic through the tunnel */
-    sysmap_command('C');
+    /* ;C add a firewall rule able to NAT the traffic through the network */
+    sysmap_command('B');
 }
 
 void JANUS_EventLoop(void)
@@ -460,14 +435,15 @@ void JANUS_EventLoop(void)
 
     ev_base = event_init();
 
+    event_set(&net_ev_recv, mitm_desc[NETWORK].fd[FDIF], EV_READ | EV_PERSIST, recv_cb, NULL);
+    event_add(&net_ev_recv, NULL);
+
     for (i = 0; i < 2; ++i)
     {
         event_set(&mitm_desc[i].ev_send, mitm_desc[i].fd[FDIF], EV_WRITE | EV_PERSIST, send_cb, &mitm_desc[i]);
-        event_set(&mitm_desc[i].ev_recv[FDIF], mitm_desc[i].fd[FDIF], EV_READ | EV_PERSIST, recv_cb, &mitm_desc[i]);
-        event_set(&mitm_desc[i].ev_recv[FDMITMATTACH], mitm_desc[i].fd[FDMITMATTACH], EV_READ, mitmattach_cb, &mitm_desc[i]);
 
-        event_add(&mitm_desc[i].ev_recv[FDIF], NULL);
-        event_add(&mitm_desc[i].ev_recv[FDMITMATTACH], NULL);
+        event_set(&mitm_desc[i].ev_attach, mitm_desc[i].fd[FDMITMATTACH], EV_READ, mitmattach_cb, &mitm_desc[i]);
+        event_add(&mitm_desc[i].ev_attach, NULL);
     }
 
     event_dispatch();
@@ -477,17 +453,14 @@ void JANUS_Reset(void)
 {
     uint8_t i, j;
 
-    /* ;8 delete the janus-fake default gateway */
+    /* ;8 del the fake arp entry added with $7 */
     sysmap_command('8');
 
-    /* ;G restore the system default gateway */
-    sysmap_command('G');
-
-    /* ;D delete the firewall rule insert with $C */
-    sysmap_command('D');
-
-    /* ;A delete the firewall rules insert with $9 */
+    /* ;A delete the firewall rule added with $9 */
     sysmap_command('A');
+
+    /* ;C delete the firewall rule added with $B */
+    sysmap_command('C');
 
     J_PCAP_CLOSE(&capnet);
 
@@ -496,16 +469,11 @@ void JANUS_Reset(void)
         queue_reset(mitm_desc[i].pqueue);
 
         J_PBUF_RELEASE(&mitm_desc[i].pbuf_send);
-
+        J_PBUF_RELEASE(&mitm_desc[i].pbuf_recv);
         J_BUFFEREVENT_FREE(&mitm_desc[i].mitm_bufferevent);
 
         for (j = 0; j < 3; ++j)
-        {
-            if (j < 2)
-                J_PBUF_RELEASE(&mitm_desc[i].pbuf_recv[j]);
-
             J_CLOSE(&mitm_desc[i].fd[j]);
-        }
 
         mitm_desc[i].first_mitm_connection = 1;
     }

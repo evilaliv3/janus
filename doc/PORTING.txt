@@ -23,11 +23,11 @@ informative commands: command that return a value, used by Janus for get
                       showed for the launching user, for a better awarness
                       about Janus operations.
 
-mandatory commands: command that execute a variation in the system, no
-                    return value is provided, anyway Janus checks if some
-                    data is present in the "standard error" file;
-                    Janus handles this case as a fatal error, and the users
-                    need to check by hand the executed command. 
+mandatory commands:   command that execute a variation in the system, no
+                      return value is provided, anyway Janus checks if some
+                      data is present in the "standard error" file;
+                      Janus handles this case as a fatal error, and the users
+                      need to check by hand the executed command. 
 
 Handling an error of such will not be common for an user, but will be 
 the required effort for everyone wanting to make a Janus port.
@@ -43,22 +43,19 @@ command of informative type are:
 
 command of mandatory type are:
 
-7 add the janus fake default gateway
-8 delete the janus fake default gateway
-9 add a firewall rules able to drop incoming traffic with src mac addr $5
-A delete the firewall rules insert with $9
-B setup the tun, indexed by the var ~T
-C add a firewall rule able to NAT the traffic thru the tunnel $A
-D delete the firewall rule insert with $B
-E delete the system default gateway
-G restore the system default gateway
+7 add fake arp entry
+8 del fake arp entry
+9 add iptables filter dropping incoming traffic with real default gw mac
+A del iptables filter dropping incoming traffic with real default gw mac
+B add addictional rule for forwarded traffic
+C del addictional rule for forwarded traffic
 
 everyone command could be a composed one using for example pipes,
 semicolons, logic AND, OR, et cetera. For example, get the $1 to $6 will
 require the usage of command ifconfig, route, arp and parsing the output with
 sed or awk. 
 
-Implementing a command $8 will require, in some system two different firewall 
+Implementing a command $9 will require, in some system two different firewall 
 command (the first intended to drop incoming traffic destinated to the local box,
 the second to drop the same traffic that will be forwarded, in the case Janus is
 running in a network gateway)
@@ -136,10 +133,8 @@ format required:
 5) every command in the 2nd and 3rd section will be embraced by "#" at the start
    to the end.
 6) the comments start with the semicolon ";"
-7) there are three special variable (there indexed by "~"): ~K, ~Z and ~T:
+7) there are three special variable (there indexed by "~"): ~Z:
    Z is the fake gateway ip address
-   K is the fake MTU usable in the tunnel
-   T is the first available tun number
    these value are hardcoded/readed by option/computed inside Janus, therefore
    are called by special parameters.
 

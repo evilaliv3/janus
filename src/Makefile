@@ -210,21 +210,6 @@ packet_queue.s:
 	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/packet_queue.s
 .PHONY : packet_queue.s
 
-# target to build an object file
-tun/tun-linux.o:
-	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/tun/tun-linux.o
-.PHONY : tun/tun-linux.o
-
-# target to preprocess a source file
-tun/tun-linux.i:
-	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/tun/tun-linux.i
-.PHONY : tun/tun-linux.i
-
-# target to generate assembly for a file
-tun/tun-linux.s:
-	cd /home/evilaliv3/Desktop/janus && $(MAKE) -f src/CMakeFiles/janus.dir/build.make src/CMakeFiles/janus.dir/tun/tun-linux.s
-.PHONY : tun/tun-linux.s
-
 # Help Target
 help:
 	@echo "The following are some of the valid targets for this Makefile:"
@@ -250,9 +235,6 @@ help:
 	@echo "... packet_queue.o"
 	@echo "... packet_queue.i"
 	@echo "... packet_queue.s"
-	@echo "... tun/tun-linux.o"
-	@echo "... tun/tun-linux.i"
-	@echo "... tun/tun-linux.s"
 .PHONY : help
 
 

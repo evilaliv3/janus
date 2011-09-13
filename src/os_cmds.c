@@ -60,27 +60,22 @@ struct janus_mandatory_command
     char *command;
 } mandatory_command[] =
 {
-    { '7', "add janus as gateway", NULL, NULL },
-    { '8', "del janus as gateway", NULL, NULL },
-    { '9', "add iptables filter dropping incoming traffic with real default gw MAC", NULL, NULL },
+    { '7', "add fake arp entry", NULL, NULL },
+    { '8', "del fake arp entry", NULL, NULL },
+    { '9', "add iptables filter dropping incoming traffic with real default gw mac", NULL, NULL },
     { 'A', "del iptables filter dropping incoming traffic with real default gw mac", NULL, NULL },
-    { 'B', "add janus tunnel", NULL, NULL },
-    { 'C', "add addictional rule for forwarded traffic", NULL, NULL },
-    { 'D', "del addictional rule for forwarded traffic", NULL, NULL },
-    { 'E', "del real default gw as gateway", NULL, NULL },
-    { 'G', "add real default gw as gateway", NULL, NULL },
+    { 'B', "add addictional rule for forwarded traffic", NULL, NULL },
+    { 'C', "del addictional rule for forwarded traffic", NULL, NULL },
     { '0', NULL, NULL, NULL }
 };
 
 /*
  * remind special char:
  * ***********************************
- * T: tunnel name
  * Z: local endpoint ip address 
- * K: MTU value for the tun interface
  * ***********************************
  */
-char *T = NULL, *Z = NULL, *K = NULL;
+char *Z = NULL;
 
 /* 
  * with janus package will became installed:
@@ -541,18 +536,11 @@ char *get_sysmap_str(char req)
             return data_collect[i].data;
     }
 
-    /* handling of the three special character: K Z T */
+    /* handling of the three special character: Z */
     switch(req)
     {
-        case 'K': /* MTU value */
-            return K;
         case 'Z':
             return CONST_JANUS_FAKEGW_IP;
-        case 'T':
-            if(T == NULL)
-                runtime_exception("has been requested element index by ~T before tunnel is opened!\n");
-            else
-                return T;
         default:
             runtime_exception("has been searched the command index with '%c': this element doesn't exist\n", req);
     }
@@ -568,67 +556,14 @@ void map_external_str(char req, char *data)
 
     switch(req)
     {
-        case 'T':
-            if(T != NULL)
-                free(T);
-            J_STRDUP(T, data);
-            break;
         case 'Z':
             if(Z != NULL)
                 free(Z);
             J_STRDUP(Z, data);
             break;
-        case 'K':
-            if(K != NULL)
-                free(K);
-            J_STRDUP(K, data);
-            break;
         default:
             runtime_exception("has been searched the command index with '%c': this element could not be set\n", req);
     }
-}
-
-/* only the MTU 'K' could be mapped with an int */
-void map_external_int(char req, uint32_t data)
-{
-    switch(req)
-    {
-        case 'K':
-            if(K != NULL)
-                free(K);
-            J_CALLOC(K,10, 1);
-            snprintf(K, 10, "%d", data);
-            break;
-        case 'Z':
-        case 'T':
-        default:
-            runtime_exception("set with command index with '%c' using an INT: invalid data or index\n", req);
-    }
-}
-
-void janus_conf_MTUfix(int16_t fix)
-{
-    int32_t actvalue;
-
-    if(K == NULL)
-        runtime_exception("janus_conf_MTUfix call before MTU has been set\n");
-
-    actvalue = atoi(K);
-
-    if(actvalue < 0 || actvalue > 9000)
-        runtime_exception("invalid value present in MTU (string [%s] int [%d])\n", K, actvalue);
-
-    actvalue += fix;
-
-    if(actvalue < 512 || actvalue > 9000)
-        runtime_exception("invalid configuration, no MTU < 512 or > 9000 could pe plausible in the Intertube (int [%d])\n", actvalue);
-
-    free(K);
-
-    J_CALLOC(K, 10, 1);
-    snprintf(K, 10, "%d", actvalue);
-
-    printf("[set] applied the mtu fix for tunnel interface: [%d]\n", fix);
 }
 
 void free_cmd_structures(void)

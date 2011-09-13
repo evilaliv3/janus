@@ -12,9 +12,7 @@ C line
 
 ; 2nd SECTION
 
-; SPECIAL: ~T means: the tunnel interface name
 ; SPECIAL: ~Z means: the fake gateway ip address
-; SPECIAL: ~K means: the fake mtu value
 ;         these value are specify by the users or hardcoded, therefore are treated differently
 
 ;1 get the default gateway ip address
@@ -37,29 +35,20 @@ I6 #arp -n | grep "~1 " | awk {' print $3 '}#
 
 ; 3rd SECTION
 
-;7 add a default gateway
-S7 #route add default gw ~Z dev ~T#
+;7 add a fake arp entry
+S7 #arp -d ~1; arp -s ~1 00:24:d6:63:66:4c#
 
-;8 delete the janus default gateway
-S8 #route del default gw ~Z dev ~T#
+;8 del the fake arp entry added with $7
+S8 #arp -d ~1; arp -s ~1 ~6#
 
 ;9 add a firewall rules able to drop incoming traffic with src mac addr $6
 S9 #iptables -A FORWARD -i ~2 -m mac --mac-source ~6 -j DROP && iptables -A INPUT -i ~2 -m mac --mac-source ~6 -j DROP#
 
-;A delete the firewall rules insert with $9
+;A delete the firewall rule added with $9
 SA #iptables -D FORWARD -i ~2 -m mac --mac-source ~6 -j DROP && iptables -D INPUT -i ~2 -m mac --mac-source ~6 -j DROP#
 
-;B setup the $6
-SB #ifconfig ~T ~3 pointopoint ~Z mtu ~K#
+;B add a firewall rule able to NAT the traffic through the network interface $2
+SB #iptables -A POSTROUTING -o ~2 -t nat -j MASQUERADE#
 
-;C add a firewall rule able to NAT the traffic thru the tunnel $B
-SC #iptables -A POSTROUTING -o ~T -t nat -j MASQUERADE#
-
-;D delete the firewall rule insert with $C
-SD #iptables -D POSTROUTING -o ~T -t nat -j MASQUERADE#
-
-;E delete the system default gateway
-SE #route del default#
-
-;G restore the system default gateway
-SG #route add default gw ~1#
+;C delete the firewall rule added with $B
+SC #iptables -D POSTROUTING -o ~2 -t nat -j MASQUERADE#

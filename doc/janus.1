@@ -15,7 +15,7 @@ Over this sockets, before a packet, it's always appended it's size (16bit), and 
 .PP
 The code is a portable and optimized rewrite of a first idea implemented in SniffJoke software written by Claudio Agosti.
 .PP
-The software overrides the actual routing table, creating a fake gateway with the aim to block packets after the kernel (on outgouing traffic) and before the kernel (on incoming traffic)
+The software creates a fake arp entry with the aim to block packets after the kernel (on outgouing traffic) and before the kernel (on incoming traffic)
 .PP
 The options usefull when Janus is started are:
 .PP
@@ -32,9 +32,6 @@ set the listen port for outgoing traffic
 .PP
 .B --pqueue-len <len> [default: 32]
 set tha internal packet queue length
-.PP
-.B --mtu-fix <len> [default: 0]
-set the tunnel mtu difference with respect to real interface
 .PP
 .B --foreground
 start Janus in foreground mode

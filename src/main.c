@@ -47,7 +47,6 @@ static void janus_help(const char *pname)
     " --listen-port-in\t<port>\tset the listen port for incoming traffic\n"\
     " --listen-port-out\t<port>\tset the listen port for outgoing traffic\n"\
     " --pqueue-len\t\t<len>\tset tha internal packet queue length\n"\
-    " --mtu-fix\t\t<len>\tset the tunnel mtu difference with respect to real interface\n"\
     " --foreground\t\t\trun Janus in foreground\n"\
     " --version\t\t\tshow Janus version\n"\
     " --help\t\t\t\tshow this help\n\n"\
@@ -134,8 +133,6 @@ void do_background(void)
 int main(int argc, char **argv)
 {
     uint8_t foreground = 0;
-    /* useful in the handling of the 'm' option */
-    int16_t mtu_boundary = (9000 - 1400);
 
     int charopt;
     int port;
@@ -146,7 +143,6 @@ int main(int argc, char **argv)
         { "listen-port-in", required_argument, NULL, 'i'},
         { "listen-port-out", required_argument, NULL, 'o'},
         { "pqueue-len", required_argument, NULL, 'q'},
-        { "mtu-fix", required_argument, NULL, 'm'},
         { "foreground", no_argument, NULL, 'f'},
         { "version", no_argument, NULL, 'v'},
         { "help", no_argument, NULL, 'h'},
@@ -161,9 +157,8 @@ int main(int argc, char **argv)
     conf.listen_port_in = CONST_JANUS_LISTEN_PORT_IN;
     conf.listen_port_out = CONST_JANUS_LISTEN_PORT_OUT;
     conf.pqueue_len = CONST_JANUS_PQUEUE_LEN;
-    conf.mtu_fix = CONST_JANUS_MTU_FIX;
 
-    while ((charopt = getopt_long(argc, argv, "l:i:o:q:m:vh", janus_options, NULL)) != -1)
+    while ((charopt = getopt_long(argc, argv, "l:i:o:q:vh", janus_options, NULL)) != -1)
     {
         switch (charopt)
         {
@@ -203,14 +198,6 @@ int main(int argc, char **argv)
             else
             {
                 printf("invalid number specified for packet queue length param (0-64k)\n");
-                exit(1);
-            }
-            break;
-        case 'm':
-            conf.mtu_fix = atoi(optarg);
-            if( conf.mtu_fix < (-1 * mtu_boundary) || conf.mtu_fix > mtu_boundary )
-            {
-                printf("invalid MTU offset: (%u), boundary +-%u\n", conf.mtu_fix, mtu_boundary);
                 exit(1);
             }
             break;
