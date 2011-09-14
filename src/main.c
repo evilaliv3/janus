@@ -149,9 +149,7 @@ int main(int argc, char **argv)
         { NULL, 0, NULL, 0}
     };
 
-    /* the banner in conf will be clear in janus.c:mitmattach_cb */
     snprintf(conf.banner, CONST_JANUS_BANNER_LENGTH, "%s", JANUS_BANNER);
-    snprintf(conf.hex_banner_len, 2, "%c", (int)CONST_JANUS_BANNER_LENGTH);
 
     snprintf(conf.listen_ip, sizeof (conf.listen_ip), "%s", CONST_JANUS_LISTEN_IP);
     conf.listen_port_in = CONST_JANUS_LISTEN_PORT_IN;
@@ -230,8 +228,7 @@ int main(int argc, char **argv)
      * because background check is provided after the bootstrap */
     printf("Janus connection diverter is starting with the following parameters:\n");
     printf(". connection is waiting in %s. port %u is serving incoming traffic, %u outgoing\n",
-            conf.listen_ip, conf.listen_port_in, conf.listen_port_out);
-    printf(". creating a fake default gateway to [%s]\n", CONST_JANUS_FAKEGW_IP);
+           conf.listen_ip, conf.listen_port_in, conf.listen_port_out);
 
     sigtrapSetup(handler_termination);
 
@@ -240,7 +237,7 @@ int main(int argc, char **argv)
 
     JANUS_Bootstrap();
 
-    for ( main_alive = 1; main_alive ; )
+    for (main_alive = 1; main_alive;)
     {
         JANUS_Init();
 

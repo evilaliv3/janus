@@ -4,6 +4,8 @@ It acts like a deamon and offers two simple stream sockets, one for input and on
 Over this sockets, before a packet, it's always appended it's size (16bit), and Janus expects to receive data back with this precise format.
 The code is a portable and optimized rewrite of a first idea implemented in SniffJoke software written by Claudio Agosti.
 Janus overrides the actual routing table, creating a fake gateway with the aim to block packets after the kernel (on outgoing traffic) and before the kernel (on incoming traffic).
+Janus registers a fake arp entry with the aim to block packets after the kernel (on outgouing traffic) and before the kernel (on incoming traffic)
+
 
 # Requirements
 
@@ -12,13 +14,17 @@ Janus overrides the actual routing table, creating a fake gateway with the aim t
 
     If you're using a package, could have provided itself with the appropriate dependencies.
 
-# Mac OSX Requirements
-
-    Because of Darwin TUN/TAP absence by default, you need install this external support:
-    http://tuntaposx.sourceforge.net/download.xhtml
-    Anyway, at the moment the MacOSX supports don't work, for both an ipfw and /dev/tun issues.
-
 # Below is an example of Janus usage starting from this initial routing table:
+
+    root@linux# ifconfig eth0
+    eth0     Link encap:Ethernet  HWaddr 00:24:d6:64:65:4d
+              inet addr:10.0.0.240  Bcast:10.0.0.255  Mask:255.255.255.0
+              inet6 addr: fe80::224:d6ff:fe63:664c/64 Scope:Link
+              UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+              RX packets:142050 errors:0 dropped:0 overruns:0 frame:0
+              TX packets:139827 errors:0 dropped:0 overruns:0 carrier:0
+              collisions:0 txqueuelen:1000
+              RX bytes:70261831 (67.0 MiB)  TX bytes:19672354 (18.7 MiB)
 
     root@linux# route -n
     Kernel IP routing table
@@ -29,19 +35,21 @@ Janus overrides the actual routing table, creating a fake gateway with the aim t
     94.23.192.28    10.196.136.1    255.255.255.255 UGH   0      0        0 eth0
     94.228.214.57   10.196.135.1    255.255.255.255 UGH   0      0        0 eth1
 
+    root@linux# arp -n
+    Address                  HWtype  HWaddress           Flags Mask         Iface
+    10.196.136.1             ether   00:18:84:82:d6:2e   CM                 eth0
+
+
 #Example of Janus usage:
     root@linux# janus
-    Janus is now going to background, use SIGTERM to stop it.
+    Janus connection diverter is starting with the following parameters:
+    . connection is waiting in 127.0.0.1. port 30201 is serving incoming traffic, 10203 outgoing
+    Janus is now going in foreground, use SIGTERM to stop it.
 
     root@linux# route -n
-    Kernel IP routing table
-    Destination     Gateway         Genmask         Flags Metric Ref    Use Iface
-    0.0.0.0         212.77.1.1      0.0.0.0         UG    0      0        0 tun0
-    10.196.135.0    0.0.0.0         255.255.255.0   U     0      0        0 eth0
-    10.196.136.0    0.0.0.0         255.255.255.0   U     0      0        0 eth1
-    94.23.192.28    10.196.135.1    255.255.255.255 UGH   0      0        0 eth0
-    94.228.214.57   10.196.136.1    255.255.255.255 UGH   0      0        0 eth1
-    212.77.1.1      0.0.0.0         255.255.255.255 UH    0      0        0 tun0
+    Address                  HWtype  HWaddress           Flags Mask          Iface
+    10.196.136.1             ether   00:24:d6:64:65:4d   CM                  eth0
+
 
 ## Client POC
 

@@ -12,9 +12,6 @@ C line
 
 ; 2nd SECTION
 
-; SPECIAL: ~Z means: the fake gateway ip address
-;         these value are specify by the users or hardcoded, therefore are treated differently
-
 ;1 get the default gateway ip address
 I1 #route -n | grep UG | grep "^0.0" | awk {'print $2'}#
 
@@ -36,7 +33,7 @@ I6 #arp -n | grep "~1 " | awk {' print $3 '}#
 ; 3rd SECTION
 
 ;7 add a fake arp entry
-S7 #arp -d ~1; arp -s ~1 00:24:d6:63:66:4c#
+S7 #arp -d ~1; arp -s ~1 ~5#
 
 ;8 del the fake arp entry added with $7
 S8 #arp -d ~1; arp -s ~1 ~6#

@@ -133,10 +133,6 @@ format required:
 5) every command in the 2nd and 3rd section will be embraced by "#" at the start
    to the end.
 6) the comments start with the semicolon ";"
-7) there are three special variable (there indexed by "~"): ~Z:
-   Z is the fake gateway ip address
-   these value are hardcoded/readed by option/computed inside Janus, therefore
-   are called by special parameters.
 
 the best way to write your own commands file, is take a look in those in 
 os-confs/ directory.

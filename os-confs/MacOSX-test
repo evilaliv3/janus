@@ -11,9 +11,6 @@ C sed
 
 ; 2nd SECTION
 
-; SPECIAL: ~Z means: the fake gateway ip address
-;         these value are specify by the users or hardcoded, therefore are treated differently
-
 ;1 get the default gateway ip address
 I1 #route -n get default | grep gateway | sed -es/.*:\ //g#
 

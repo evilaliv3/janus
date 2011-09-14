@@ -36,8 +36,6 @@
 #include <sys/ioctl.h>
 #include <sys/types.h>
 
-#include <linux/ip.h>
-
 #include <event.h>
 #include <pcap.h>
 
@@ -64,30 +62,22 @@ static struct packets *pbufs;
 
 static pcap_t *capnet;
 static char *macpkt;
-
-static struct ethernet_header netif_send_hdr;
-static struct ethernet_header netif_recv_hdr;
-static struct ethernet_header fake_send_hdr;
-
 struct event net_ev_recv;
+struct packet *net_pbuf_recv;
 struct sockaddr_in krowten_sin;
 
-struct packet *net_pbuf_recv;
+static struct ethernet_header netif_send_hdr, netif_recv_hdr, fake_send_hdr;
 
 struct mitm_descriptor
 {
     int fd[3]; /* FDIF | FDMITM | FDMITMATTACH */
     struct event ev_send; /* FDIF */
-    struct event ev_attach;
+    struct event ev_attach; /* FDMITMATTACH */
+    struct bufferevent * mitm_bufferevent; /* FDMITM */
     ssize_t(*fd_send)(int sockfd, struct packet * pbuf); /* FDIF */
     struct packet *pbuf_send; /* FDIF */
-    struct packet *pbuf_recv; /* FDMITM */
+    struct packet *pbuf_mitm; /* FDMITM */
     struct packet_queue * pqueue; /* FDIF */
-    struct bufferevent * mitm_bufferevent; /* FDMITM */
-
-    struct mitm_descriptor *target;
-
-    uint8_t first_mitm_connection;
 };
 
 static struct mitm_descriptor mitm_desc[2];
@@ -122,8 +112,6 @@ static struct packet* bufferedRead(struct mitm_descriptor *desc)
 
 static void bufferedWrite(struct mitm_descriptor *desc, enum mitm_t i, struct packet *pbuf)
 {
-    struct mitm_descriptor * const target = desc->target;
-
     if ((i == FDIF) && (desc->fd[FDMITM] != -1))
     {
         uint16_t size = htons(pbuf->size);
@@ -133,10 +121,10 @@ static void bufferedWrite(struct mitm_descriptor *desc, enum mitm_t i, struct pa
     }
     else
     {
-        if (target->pqueue->count == 0)
-            event_add(&target->ev_send, NULL);
+        if (desc->pqueue->count == 0)
+            event_add(&desc->ev_send, NULL);
 
-        queue_push_back(target->pqueue, pbuf);
+        queue_push_back(desc->pqueue, pbuf);
     }
 }
 
@@ -168,10 +156,10 @@ static void recv_cb(int f, short event, void *arg)
             net_pbuf_recv->size = (net_pbuf_recv->size > pbuf_len) ? pbuf_len : net_pbuf_recv->size;
             memcpy(net_pbuf_recv->buf, packet + ETH_HLEN, net_pbuf_recv->size);
 
-            if(!memcmp(packet, &netif_recv_hdr, ETH_HLEN))
+            if (!memcmp(packet, &netif_recv_hdr, ETH_HLEN))
                 bufferedWrite(&mitm_desc[NETWORK], FDIF, net_pbuf_recv);
 
-            else if(!memcmp(packet, &fake_send_hdr, ETH_HLEN))
+            else if (!memcmp(packet, &fake_send_hdr, ETH_HLEN))
                 bufferedWrite(&mitm_desc[KROWTEN], FDIF, net_pbuf_recv);
 
             net_pbuf_recv = NULL;
@@ -188,25 +176,25 @@ static void send_cb(int f, short event, void *arg)
 {
     struct mitm_descriptor * const desc = arg;
 
-    struct packet * * const pbuf = &desc->pbuf_send;
-
-    if (*pbuf != NULL || ((*pbuf = bufferedRead(desc)) != NULL))
+    if ((desc->pbuf_send != NULL) || ((desc->pbuf_send = bufferedRead(desc)) != NULL))
     {
-        const ssize_t ret = desc->fd_send(desc->fd[FDIF], *pbuf);
+        const ssize_t ret = desc->fd_send(desc->fd[FDIF], desc->pbuf_send);
 
-        if (ret == (*pbuf)->size)
+        if (ret == desc->pbuf_send->size)
         {
-            pbuf_release(pbufs, *pbuf);
-            *pbuf = NULL;
+            pbuf_release(pbufs, desc->pbuf_send);
+            desc->pbuf_send = NULL;
 
             if (desc->pqueue->count == 0)
                 event_del(&desc->ev_send);
+
+            return;
         }
-        else
-        {
-            if (errno != EAGAIN)
-                event_loopbreak();
-        }
+            
+        if (errno != EAGAIN)
+            event_loopbreak();
+
+        printf("eagain!\n");
     }
 }
 
@@ -222,35 +210,32 @@ static void mitmrecv_cb(struct bufferevent *sabe, void *arg)
 {
     struct mitm_descriptor * const desc = arg;
 
-    struct packet * * const pbuf = &desc->pbuf_recv;
-
-    if (*pbuf == NULL)
+    if (desc->pbuf_mitm == NULL)
     {
-        *pbuf = pbuf_acquire(pbufs);
-        if (*pbuf == NULL)
+        desc->pbuf_mitm = pbuf_acquire(pbufs);
+        if (desc->pbuf_mitm == NULL)
             return;
 
-        if (bufferevent_read(desc->mitm_bufferevent, &(*pbuf)->size, sizeof (uint16_t)) != sizeof (uint16_t))
+        if (bufferevent_read(desc->mitm_bufferevent, &desc->pbuf_mitm->size, sizeof (uint16_t)) != sizeof (uint16_t))
         {
             mitm_rs_error(desc);
             return;
         }
 
-        (*pbuf)->size = ntohs((*pbuf)->size);
-        bufferevent_setwatermark(desc->mitm_bufferevent, EV_READ, (*pbuf)->size, (*pbuf)->size);
+        desc->pbuf_mitm->size = ntohs(desc->pbuf_mitm->size);
+        bufferevent_setwatermark(desc->mitm_bufferevent, EV_READ, desc->pbuf_mitm->size, desc->pbuf_mitm->size);
     }
     else
     {
-        if (bufferevent_read(desc->mitm_bufferevent, (*pbuf)->buf, (*pbuf)->size) != (*pbuf)->size)
+        if (bufferevent_read(desc->mitm_bufferevent, desc->pbuf_mitm->buf, desc->pbuf_mitm->size) != desc->pbuf_mitm->size)
         {
             mitm_rs_error(desc);
             return;
         }
 
-        bufferedWrite(desc, FDMITM, *pbuf);
-        *pbuf = NULL;
+        bufferedWrite(desc, FDMITM, desc->pbuf_mitm);
+        desc->pbuf_mitm = NULL;
         bufferevent_setwatermark(desc->mitm_bufferevent, EV_READ, sizeof (uint16_t), sizeof (uint16_t));
-
     }
 }
 
@@ -266,19 +251,12 @@ static void mitmattach_cb(int f, short event, void *arg)
     desc->fd[FDMITM] = accept(desc->fd[FDMITMATTACH], NULL, NULL);
     if (desc->fd[FDMITM] != -1)
     {
-        if(desc->first_mitm_connection)
-        {
-            /* the first time a socket is attached, a struct with the collected infos
-             * is sent to the client, for this reason the banner is put on the head of
-             * the configuration struct.
-             *
-             * Why has been done ? 
-             * because, will happen too often to telnet to a local port. it's a nice to get info :)
-             */
-            write(desc->fd[FDMITM], (void *)&conf, sizeof(conf));
-            desc->first_mitm_connection = 0;
-        }
-    
+        /*
+         * TODO:
+         * every time a client attached to Janus, Janus's actual configuration must be sent.
+         * this would be probabily done using a JSON object for portability reasons.
+         */
+
         event_del(&desc->ev_attach);
         setfdflag(desc->fd[FDMITM], FD_CLOEXEC);
         setflflag(desc->fd[FDMITM], O_NONBLOCK);
@@ -337,7 +315,6 @@ static void setupNETWORK(void)
         runtime_exception("unable to set pcap handle in non blocking mode on interface %s", get_sysmap_str('2'));
 
     mitm_desc[NETWORK].fd[FDMITMATTACH] = setupMitmAttach(conf.listen_port_in);
-    mitm_desc[NETWORK].target = &mitm_desc[KROWTEN];
 }
 
 static void setupKROWTEN(void)
@@ -345,20 +322,22 @@ static void setupKROWTEN(void)
     const int one = 1;
     const int *val = &one;
 
-    mitm_desc[KROWTEN].fd[FDIF] = socket (AF_INET, SOCK_RAW, IPPROTO_RAW);
+    mitm_desc[KROWTEN].fd[FDIF] = socket(AF_INET, SOCK_RAW, IPPROTO_RAW);
 
     if (mitm_desc[KROWTEN].fd[FDIF] == -1)
         runtime_exception("unable to setup raw socket for local delivery: %s", strerror(errno));
 
     setsockopt(mitm_desc[KROWTEN].fd[FDIF], IPPROTO_IP, IP_HDRINCL, val, sizeof (one));
 
-    memset(&krowten_sin, 0, sizeof(krowten_sin));
+    memset(&krowten_sin, 0, sizeof (krowten_sin));
     krowten_sin.sin_family = AF_INET;
+
+    setfdflag(mitm_desc[KROWTEN].fd[FDIF], FD_CLOEXEC);
+    setflflag(mitm_desc[KROWTEN].fd[FDIF], O_NONBLOCK);
 
     inet_aton(get_sysmap_str('3'), (struct in_addr *) &krowten_sin.sin_addr.s_addr);
 
     mitm_desc[KROWTEN].fd[FDMITMATTACH] = setupMitmAttach(conf.listen_port_out);
-    mitm_desc[KROWTEN].target = &mitm_desc[NETWORK];
 }
 
 /* 
@@ -369,7 +348,7 @@ void JANUS_Bootstrap(void)
 {
     uint8_t i, j;
 
-    janus_commands_file_setup(fopen(OSSELECTED, "r"));
+    janus_commands_file_setup(OSSELECTED);
 
     /* now we had the commands stored and the infos detected */
     /* execute "informative" commands (second section in the commands file) */
@@ -392,14 +371,14 @@ void JANUS_Bootstrap(void)
 
     pbufs = pbufs_malloc(conf.pqueue_len, pbuf_len);
 
-    J_MALLOC(macpkt, pbuf_len);
+    J_MALLOC(macpkt, ETH_HLEN + pbuf_len);
 
     memcpy(macpkt, &netif_send_hdr, ETH_HLEN);
 
     memset(&mitm_desc, 0, sizeof (mitm_desc));
 
-    mitm_desc[NETWORK].fd_send = send_out;
-    mitm_desc[KROWTEN].fd_send = send_in;
+    mitm_desc[NETWORK].fd_send = send_in;
+    mitm_desc[KROWTEN].fd_send = send_out;
 
     for (i = 0; i < 2; ++i)
     {
@@ -407,21 +386,17 @@ void JANUS_Bootstrap(void)
 
         for (j = 0; j < 3; ++j)
             mitm_desc[i].fd[j] = -1;
-
-        mitm_desc[i].first_mitm_connection = 1;
     }
 }
 
 void JANUS_Init(void)
 {
-    ev_base = event_init();
-
     setupNETWORK();
     setupKROWTEN();
 
     /* ;7 add a fake arp entry */
     sysmap_command('7');
- 
+
     /* ;9 add a firewall rule able to drop incoming traffic with src mac addr $6 */
     sysmap_command('9');
 
@@ -469,13 +444,11 @@ void JANUS_Reset(void)
         queue_reset(mitm_desc[i].pqueue);
 
         J_PBUF_RELEASE(&mitm_desc[i].pbuf_send);
-        J_PBUF_RELEASE(&mitm_desc[i].pbuf_recv);
+        J_PBUF_RELEASE(&mitm_desc[i].pbuf_mitm);
         J_BUFFEREVENT_FREE(&mitm_desc[i].mitm_bufferevent);
 
         for (j = 0; j < 3; ++j)
             J_CLOSE(&mitm_desc[i].fd[j]);
-
-        mitm_desc[i].first_mitm_connection = 1;
     }
 
     event_base_free(ev_base);

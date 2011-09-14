@@ -36,13 +36,10 @@
 #endif
 /* --- */
 
-#define CONST_JANUS_VERSION         "0.1"
+#define CONST_JANUS_VERSION         "0.2"
 #define CONST_JANUS_IFNAME          "janus"
 #define CONST_JANUS_WEBSITE         "http://github.com/evilaliv3/janus"
 
-#define CONST_JANUS_FAKEGW_IP       "212.77.1.1"
-/* 212.77.1.1: vatican network: janus reserve some right to choose a routing
- * blackhole. In short, wanna cut out bigots hackah. */
 #define CONST_JANUS_LISTEN_IP       "127.0.0.1"
 
 #define CONST_JANUS_LISTEN_PORT_IN  30201
@@ -66,8 +63,6 @@ struct ethernet_header
 
 struct janus_config
 {
-    /* why a banner is required, is explained in mitmattach_cb */
-    char hex_banner_len[2];
     char banner [CONST_JANUS_BANNER_LENGTH];
     char listen_ip [CONST_JANUS_BUFSIZE];
     uint16_t listen_port_in;
@@ -82,10 +77,10 @@ void JANUS_Shutdown(void);
 void JANUS_EventLoop(void);
 
 /* these are the exported symbol from os_cmds.c */
-void janus_commands_file_setup(FILE *);
+void janus_commands_file_setup(char *);
 void sysmap_command(char);
 char *get_sysmap_str(char);
-uint32_t get_sysmap_int(char); 
+uint32_t get_sysmap_int(char);
 void map_external_int(char, uint32_t);
 void map_external_str(char, char *);
 void free_cmd_structures(void);
