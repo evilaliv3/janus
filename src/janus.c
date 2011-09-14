@@ -193,8 +193,6 @@ static void send_cb(int f, short event, void *arg)
             
         if (errno != EAGAIN)
             event_loopbreak();
-
-        printf("eagain!\n");
     }
 }
 
