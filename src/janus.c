@@ -150,25 +150,22 @@ static void recv_cb(int f, short event, void *arg)
         struct pcap_pkthdr header;
         const u_char * const packet = pcap_next(capnet, &header);
 
-        if ((packet != NULL) || (header.len != header.caplen))
+        if ((packet != NULL) && (header.len == header.caplen))
         {
             net_pbuf_recv->size = header.len - ETH_HLEN;
             net_pbuf_recv->size = (net_pbuf_recv->size > pbuf_len) ? pbuf_len : net_pbuf_recv->size;
             memcpy(net_pbuf_recv->buf, packet + ETH_HLEN, net_pbuf_recv->size);
 
-            if (!memcmp(packet, &netif_recv_hdr, ETH_HLEN))
+            if (!memcmp(packet, &netif_recv_hdr, 2 * ETH_ALEN))
                 bufferedWrite(&mitm_desc[NETWORK], FDIF, net_pbuf_recv);
 
-            else if (!memcmp(packet, &fake_send_hdr, ETH_HLEN))
+            else if (!memcmp(packet, &fake_send_hdr, 2 * ETH_ALEN))
                 bufferedWrite(&mitm_desc[KROWTEN], FDIF, net_pbuf_recv);
 
             net_pbuf_recv = NULL;
 
             return;
         }
-
-        if (errno != EAGAIN)
-            event_loopbreak();
     }
 }
 
@@ -221,6 +218,12 @@ static void mitmrecv_cb(struct bufferevent *sabe, void *arg)
         }
 
         desc->pbuf_mitm->size = ntohs(desc->pbuf_mitm->size);
+        if(desc->pbuf_mitm->size == 0 || desc->pbuf_mitm->size > pbuf_len )
+        {
+            mitm_rs_error(desc);
+            return;
+        }
+
         bufferevent_setwatermark(desc->mitm_bufferevent, EV_READ, desc->pbuf_mitm->size, desc->pbuf_mitm->size);
     }
     else
@@ -258,16 +261,15 @@ static void mitmattach_cb(int f, short event, void *arg)
         event_del(&desc->ev_attach);
         setfdflag(desc->fd[FDMITM], FD_CLOEXEC);
         setflflag(desc->fd[FDMITM], O_NONBLOCK);
+        desc->mitm_bufferevent = bufferevent_new(desc->fd[FDMITM], mitmrecv_cb, NULL, mitm_rs_error_cb, desc);
+        bufferevent_setwatermark(desc->mitm_bufferevent, EV_READ, 2, 2);
+        bufferevent_enable(desc->mitm_bufferevent, EV_READ);
     }
     else
     {
         if (errno != EAGAIN)
             event_loopbreak();
     }
-
-    desc->mitm_bufferevent = bufferevent_new(desc->fd[FDMITM], mitmrecv_cb, NULL, mitm_rs_error_cb, desc);
-    bufferevent_setwatermark(desc->mitm_bufferevent, EV_READ, 2, 2);
-    bufferevent_enable(desc->mitm_bufferevent, EV_READ);
 }
 
 static int setupMitmAttach(uint16_t port)
