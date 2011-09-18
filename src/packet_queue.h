@@ -30,7 +30,6 @@ struct packet_queue;
 
 struct packet
 {
-    struct packet *next;
     char *buf;
     uint16_t size;
 };
@@ -39,7 +38,6 @@ struct packet_queue
 {
     struct packets *pkts;
     uint16_t *records;
-    uint16_t capacity;
     uint16_t count;
     uint16_t head;
     uint16_t tail;

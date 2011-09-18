@@ -22,6 +22,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "utils.h"
 #include "packet_queue.h"
@@ -60,7 +61,7 @@ void pbufs_free(struct packets *pkts)
 
 struct packet* pbuf_acquire(struct packets* pkts)
 {
-    struct packet* ret;
+    struct packet *ret;
     return queue_pop_front(pkts->free_packets, &ret);
 }
 
@@ -71,7 +72,7 @@ void pbuf_release(struct packets *pkts, struct packet *pkt)
 
 struct packet_queue* queue_malloc(struct packets *pkts)
 {
-    struct packet_queue* pq;
+    struct packet_queue *pq;
 
     J_MALLOC(pq, sizeof (struct packet_queue));
     J_MALLOC(pq->records, pkts->num * sizeof (pkts->num));
