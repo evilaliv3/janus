@@ -71,13 +71,11 @@ static struct ethernet_header netif_send_hdr, netif_recv_hdr, fake_send_hdr;
 struct mitm_descriptor
 {
     int fd[3]; /* FDIF | FDMITM | FDMITMATTACH */
-    struct event ev_send; /* FDIF */
-    struct event ev_attach; /* FDMITMATTACH */
+    struct event ev_send, ev_attach; /* FDIF | FDMITMATTACH */
     struct bufferevent * mitm_bufferevent; /* FDMITM */
     ssize_t(*fd_send)(int sockfd, struct packet * pbuf); /* FDIF */
-    struct packet *pbuf_send; /* FDIF */
-    struct packet *pbuf_mitm; /* FDMITM */
-    struct packet_queue * pqueue; /* FDIF */
+    struct packet *pbuf_send, *pbuf_mitm; /* FDIF | FDMITM */
+    struct packet_queue *pqueue; /* FDIF */
 };
 
 static struct mitm_descriptor mitm_desc[2];
@@ -115,7 +113,7 @@ static void bufferedWrite(struct mitm_descriptor *desc, enum mitm_t i, struct pa
     if ((i == FDIF) && (desc->fd[FDMITM] != -1))
     {
         uint16_t size = htons(pbuf->size);
-        bufferevent_write(desc->mitm_bufferevent, &size, sizeof (size));
+        bufferevent_write(desc->mitm_bufferevent, &size, 2);
         bufferevent_write(desc->mitm_bufferevent, pbuf->buf, pbuf->size);
         pbuf_release(pbufs, pbuf);
     }
@@ -147,24 +145,26 @@ static void recv_cb(int f, short event, void *arg)
 {
     if ((net_pbuf_recv != NULL) || ((net_pbuf_recv = pbuf_acquire(pbufs)) != NULL))
     {
+        uint8_t direction;
         struct pcap_pkthdr header;
         const u_char * const packet = pcap_next(capnet, &header);
 
         if ((packet != NULL) && (header.len == header.caplen))
         {
+            if (!memcmp(packet, &netif_recv_hdr, 2 * ETH_ALEN))
+                direction = NETWORK;
+            else if (!memcmp(packet, &fake_send_hdr, 2 * ETH_ALEN))
+                direction = KROWTEN;
+            else
+                return;
+
             net_pbuf_recv->size = header.len - ETH_HLEN;
             net_pbuf_recv->size = (net_pbuf_recv->size > pbuf_len) ? pbuf_len : net_pbuf_recv->size;
             memcpy(net_pbuf_recv->buf, packet + ETH_HLEN, net_pbuf_recv->size);
 
-            if (!memcmp(packet, &netif_recv_hdr, 2 * ETH_ALEN))
-                bufferedWrite(&mitm_desc[NETWORK], FDIF, net_pbuf_recv);
-
-            else if (!memcmp(packet, &fake_send_hdr, 2 * ETH_ALEN))
-                bufferedWrite(&mitm_desc[KROWTEN], FDIF, net_pbuf_recv);
-
+            bufferedWrite(&mitm_desc[direction], FDIF, net_pbuf_recv);
+ 
             net_pbuf_recv = NULL;
-
-            return;
         }
     }
 }
@@ -211,33 +211,28 @@ static void mitmrecv_cb(struct bufferevent *sabe, void *arg)
         if (desc->pbuf_mitm == NULL)
             return;
 
-        if (bufferevent_read(desc->mitm_bufferevent, &desc->pbuf_mitm->size, sizeof (uint16_t)) != sizeof (uint16_t))
+        if (bufferevent_read(desc->mitm_bufferevent, &desc->pbuf_mitm->size, 2) == 2)
         {
-            mitm_rs_error(desc);
-            return;
+            desc->pbuf_mitm->size = ntohs(desc->pbuf_mitm->size);
+            if((desc->pbuf_mitm->size > 0) && (desc->pbuf_mitm->size <= pbuf_len))
+            {
+                bufferevent_setwatermark(desc->mitm_bufferevent, EV_READ, desc->pbuf_mitm->size, desc->pbuf_mitm->size);
+                return;
+            }
         }
-
-        desc->pbuf_mitm->size = ntohs(desc->pbuf_mitm->size);
-        if(desc->pbuf_mitm->size == 0 || desc->pbuf_mitm->size > pbuf_len )
-        {
-            mitm_rs_error(desc);
-            return;
-        }
-
-        bufferevent_setwatermark(desc->mitm_bufferevent, EV_READ, desc->pbuf_mitm->size, desc->pbuf_mitm->size);
     }
     else
     {
-        if (bufferevent_read(desc->mitm_bufferevent, desc->pbuf_mitm->buf, desc->pbuf_mitm->size) != desc->pbuf_mitm->size)
+        if (bufferevent_read(desc->mitm_bufferevent, desc->pbuf_mitm->buf, desc->pbuf_mitm->size) == desc->pbuf_mitm->size)
         {
-            mitm_rs_error(desc);
+            bufferedWrite(desc, FDMITM, desc->pbuf_mitm);
+            desc->pbuf_mitm = NULL;
+            bufferevent_setwatermark(desc->mitm_bufferevent, EV_READ, 2, 2);
             return;
         }
-
-        bufferedWrite(desc, FDMITM, desc->pbuf_mitm);
-        desc->pbuf_mitm = NULL;
-        bufferevent_setwatermark(desc->mitm_bufferevent, EV_READ, sizeof (uint16_t), sizeof (uint16_t));
     }
+
+    mitm_rs_error(desc);
 }
 
 static void mitm_rs_error_cb(struct bufferevent *sabe, short what, void *arg)
@@ -264,12 +259,11 @@ static void mitmattach_cb(int f, short event, void *arg)
         desc->mitm_bufferevent = bufferevent_new(desc->fd[FDMITM], mitmrecv_cb, NULL, mitm_rs_error_cb, desc);
         bufferevent_setwatermark(desc->mitm_bufferevent, EV_READ, 2, 2);
         bufferevent_enable(desc->mitm_bufferevent, EV_READ);
+        return;
     }
-    else
-    {
-        if (errno != EAGAIN)
-            event_loopbreak();
-    }
+
+    if (errno != EAGAIN)
+        event_loopbreak();
 }
 
 static int setupMitmAttach(uint16_t port)
@@ -416,7 +410,6 @@ void JANUS_EventLoop(void)
     for (i = 0; i < 2; ++i)
     {
         event_set(&mitm_desc[i].ev_send, mitm_desc[i].fd[FDIF], EV_WRITE | EV_PERSIST, send_cb, &mitm_desc[i]);
-
         event_set(&mitm_desc[i].ev_attach, mitm_desc[i].fd[FDMITMATTACH], EV_READ, mitmattach_cb, &mitm_desc[i]);
         event_add(&mitm_desc[i].ev_attach, NULL);
     }
