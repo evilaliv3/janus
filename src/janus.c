@@ -342,7 +342,7 @@ void JANUS_Bootstrap(void)
 {
     uint8_t i, j;
 
-    janus_commands_file_setup(OSSELECTED);
+    janus_commands_file_setup(conf.file);
 
     /* now we had the commands stored and the infos detected */
     /* execute "informative" commands (second section in the commands file) */

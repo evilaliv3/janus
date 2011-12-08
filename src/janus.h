@@ -36,12 +36,11 @@
 #endif
 /* --- */
 
-#define CONST_JANUS_VERSION         "0.2"
+#define CONST_JANUS_VERSION         "0.3"
 #define CONST_JANUS_IFNAME          "janus"
 #define CONST_JANUS_WEBSITE         "http://github.com/evilaliv3/janus"
-
+#define CONST_JANUS_CONF_FILE       "/etc/janus/current-os"
 #define CONST_JANUS_LISTEN_IP       "127.0.0.1"
-
 #define CONST_JANUS_LISTEN_PORT_IN  30201
 #define CONST_JANUS_LISTEN_PORT_OUT 10203
 #define CONST_JANUS_BUFSIZE         512
@@ -52,8 +51,6 @@
 #define JANUS_BANNER                " Janus-"CONST_JANUS_VERSION" "CONST_JANUS_WEBSITE" "
 #define CONST_JANUS_BANNER_LENGTH   sizeof(JANUS_BANNER)
 
-#define OSSELECTED  "/etc/janus/current-os"
-
 struct ethernet_header
 {
     uint8_t dst_ethernet[ETH_ALEN];
@@ -63,8 +60,9 @@ struct ethernet_header
 
 struct janus_config
 {
-    char banner [CONST_JANUS_BANNER_LENGTH];
-    char listen_ip [CONST_JANUS_BUFSIZE];
+    char banner[CONST_JANUS_BANNER_LENGTH];
+    char file[CONST_JANUS_BUFSIZE];
+    char listen_ip[CONST_JANUS_BUFSIZE];
     uint16_t listen_port_in;
     uint16_t listen_port_out;
     uint16_t pqueue_len;

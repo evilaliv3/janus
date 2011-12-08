@@ -43,6 +43,7 @@ static void janus_help(const char *pname)
 {
 #define JANUS_HELP_FORMAT \
     "Usage: Janus [OPTION]... :\n"\
+    " --conf\t\t\t<file>\tset the configuration file to use\n"\
     " --listen-ip\t\t<ip>\tset the listen ip address\n"\
     " --listen-port-in\t<port>\tset the listen port for incoming traffic\n"\
     " --listen-port-out\t<port>\tset the listen port for outgoing traffic\n"\
@@ -139,6 +140,7 @@ int main(int argc, char **argv)
     int pqueue;
 
     struct option janus_options[] = {
+        { "conf", required_argument, NULL, 'c'},
         { "listen-ip", required_argument, NULL, 'l'},
         { "listen-port-in", required_argument, NULL, 'i'},
         { "listen-port-out", required_argument, NULL, 'o'},
@@ -151,6 +153,7 @@ int main(int argc, char **argv)
 
     snprintf(conf.banner, CONST_JANUS_BANNER_LENGTH, "%s", JANUS_BANNER);
 
+    snprintf(conf.file, sizeof (conf.file), "%s", CONST_JANUS_CONF_FILE);
     snprintf(conf.listen_ip, sizeof (conf.listen_ip), "%s", CONST_JANUS_LISTEN_IP);
     conf.listen_port_in = CONST_JANUS_LISTEN_PORT_IN;
     conf.listen_port_out = CONST_JANUS_LISTEN_PORT_OUT;
@@ -160,6 +163,9 @@ int main(int argc, char **argv)
     {
         switch (charopt)
         {
+        case 'c':
+            snprintf(conf.file, sizeof (conf.file), "%s", optarg);
+            break;
         case 'l':
             if (validate(optarg, REGEXP_HOST))
                 snprintf(conf.listen_ip, sizeof (conf.listen_ip), "%s", optarg);

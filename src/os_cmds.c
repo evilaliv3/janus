@@ -19,6 +19,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+#include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
@@ -299,8 +300,7 @@ static char *expand_command(char *original_rawcmd)
     do
     {
         /* delete the "~" and increment after */
-        *p = 0x00;
-        ++p;
+        *(p++) = 0x00;
 
         memcpy(&buffer[j], last_p, strlen(last_p));
         j += strlen(last_p);
@@ -311,8 +311,7 @@ static char *expand_command(char *original_rawcmd)
         j += strlen(get_sysmap_str(*p));
 
         /* delete the command code and increment after */
-        *p = 0x00;
-        ++p;
+        *(p++) = 0x00;
         last_p = p;
         /* index to the next "~" if present */
         p = strchr(p, '~');
@@ -445,10 +444,11 @@ void janus_commands_file_setup(char *oscmds_filename)
 
     while (!feof(oscmds))
     {
-        uint32_t parserRet;
         char rdLine[MAXLINESIZE] = {0};
 
-        fgets(rdLine, MAXLINESIZE, oscmds);
+        if(fgets(rdLine, MAXLINESIZE, oscmds) == NULL)
+            break;
+        
         ++fndx;
 
         rdLine[strlen(rdLine) - 1] = 0x00;
@@ -475,8 +475,7 @@ void janus_commands_file_setup(char *oscmds_filename)
             runtime_exception("invalid compilation detected at %d. supported OS name and maintainer: required\n", fndx);
 
         /* 1st SECTION: the parsing of os-cmds/ require three stage analysis */
-        parserRet = handle_CheckCommand(rdLine);
-        switch (parserRet)
+        switch (handle_CheckCommand(rdLine))
         {
         case NOT_MY_DATA:
             break;
@@ -490,8 +489,7 @@ void janus_commands_file_setup(char *oscmds_filename)
             runtime_exception("incorrect use of #..# at line %d\n", fndx);
 
         /* 2nd SECTION: the data collection operation */
-        parserRet = collect_second_section(rdLine, fndx);
-        switch (parserRet)
+        switch (collect_second_section(rdLine, fndx))
         {
         case NOT_MY_DATA:
             break;
@@ -502,8 +500,7 @@ void janus_commands_file_setup(char *oscmds_filename)
         }
 
         /* 3rd SECTION: the system interfacing */
-        parserRet = collect_third_section(rdLine);
-        switch (parserRet)
+        switch (collect_third_section(rdLine))
         {
         case NOT_MY_DATA:
             break;
@@ -535,7 +532,8 @@ void sysmap_command(char req)
              * TODO: could be useful use a different popen (different from do_popen) and check
              * if someshit is written on strerr ?
              */
-            system(mandatory_command[i].command);
+            if (system(mandatory_command[i].command) == -1)
+                printf("[exec_cmd] (error) %s [%s] %s\n", mandatory_command[i].info, mandatory_command[i].command, strerror(errno)); 
             break;
         }
     }
