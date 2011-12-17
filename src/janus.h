@@ -80,7 +80,6 @@ void sysmap_command(char);
 char *get_sysmap_str(char);
 uint32_t get_sysmap_int(char);
 void map_external_int(char, uint32_t);
-void map_external_str(char, char *);
 void free_cmd_structures(void);
 
 #endif /* JANUS_H */

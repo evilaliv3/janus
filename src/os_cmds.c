@@ -36,7 +36,7 @@ static uint8_t os_present, mn_present;
 #define NOT_MY_DATA     2
 
 /* struct for tracking command & what's is printed out when the commands are exec'd */
-struct janus_data_collect
+static struct janus_data_collect
 {
     char Ji;
     const char * const info; /* information for the user */
@@ -52,7 +52,7 @@ struct janus_data_collect
     { '0', NULL, 0, NULL}
 };
 
-struct janus_mandatory_command
+static struct janus_mandatory_command
 {
     char Ji;
     const char * const info;
@@ -313,6 +313,7 @@ static char *expand_command(char *original_rawcmd)
         /* delete the command code and increment after */
         *(p++) = 0x00;
         last_p = p;
+
         /* index to the next "~" if present */
         p = strchr(p, '~');
     }
@@ -539,7 +540,7 @@ void sysmap_command(char req)
     }
 }
 
-char *get_sysmap_str(char req)
+char* get_sysmap_str(char req)
 {
     uint32_t i;
 
@@ -549,26 +550,10 @@ char *get_sysmap_str(char req)
             return data_collect[i].data;
     }
 
-    switch (req)
-    {
-    default:
-        runtime_exception("has been searched the command index with '%c': this element doesn't exist\n", req);
-    }
+    runtime_exception("has been searched the command index with '%c': this element doesn't exist\n", req);
 
-    /* make gcc happy */
+    /* never here */
     return "janus win - and you never will see this line (except in github, gdb, etc...)";
-}
-
-void map_external_str(char req, char *data)
-{
-    if (data == NULL || strlen(data) <= 1)
-        runtime_exception("something is going very bad in your code\n");
-
-    switch (req)
-    {
-    default:
-        runtime_exception("has been searched the command index with '%c': this element could not be set\n", req);
-    }
 }
 
 void free_cmd_structures(void)
