@@ -1,6 +1,6 @@
 ; 1st SECTION
 
-N Linux 2.6.24 under test
+N Linux 3.2.0-35 under test
 M SniffJoke team - mailing list sniffjoke@sikurezza.org
 ; what's follow are the command that shall be checked by "which"
 C ifconfig
@@ -8,7 +8,7 @@ C route
 C arp
 C iptables
 C awk
-C line
+C head
 
 ; 2nd SECTION
 
@@ -19,13 +19,13 @@ I1 #route -n | grep UG | grep "^0.0" | awk {'print $2'}#
 I2 #route -n | grep UG | grep "^0.0" | awk {'print $8'}#
 
 ;3 get the ip address of $2 (the network interface at the point 2)
-I3 #ifconfig ~2 | grep "inet addr" | line | cut -b 21- | awk {'print $1'}#
+I3 #ifconfig ~2 | grep "inet addr" | head -n 1 | cut -b 21- | awk {'print $1'}#
 
 ;4 get the MTU of $2
-I4 #ifconfig ~2 | grep MTU | line | sed -es/.*MTU:// | awk {'print $1'}#
+I4 #ifconfig ~2 | grep MTU | head -n 1 | sed -es/.*MTU:// | awk {'print $1'}#
 
 ;5 get the mac address of $2
-I5 #ifconfig ~2 | grep HWaddr | line | awk {' print $5'}#
+I5 #ifconfig ~2 | grep HWaddr | head -n 1 | awk {' print $5'}#
 
 ;6 get the mac address of $1
 I6 #arp -n | grep "~1 " | awk {' print $3 '}#
