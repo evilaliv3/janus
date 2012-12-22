@@ -159,7 +159,7 @@ int main(int argc, char **argv)
     conf.listen_port_out = CONST_JANUS_LISTEN_PORT_OUT;
     conf.pqueue_len = CONST_JANUS_PQUEUE_LEN;
 
-    while ((charopt = getopt_long(argc, argv, "l:i:o:q:vh", janus_options, NULL)) != -1)
+    while ((charopt = getopt_long(argc, argv, "c:l:i:o:q:vh", janus_options, NULL)) != -1)
     {
         switch (charopt)
         {

@@ -342,7 +342,19 @@ void JANUS_Bootstrap(void)
 {
     uint8_t i, j;
 
-    janus_commands_file_setup(conf.file);
+    FILE *cfg_fp = NULL;
+
+    cfg_fp = fopen( conf.file ? conf.file : OSSELECTED, "r");
+    if(cfg_fp == NULL)
+    {
+        printf("unable to open configuration file: %s: %s",
+            conf.file ? conf.file : OSSELECTED,
+            strerror(errno)
+        );
+        exit(errno);
+    }
+
+    janus_commands_file_setup(cfg_fp);
 
     /* now we had the commands stored and the infos detected */
     /* execute "informative" commands (second section in the commands file) */
