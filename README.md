@@ -1,10 +1,10 @@
-# Janus is a portable, unified and lightweight interface for mitm applications.
+# Janus is a portable, unified and lightweight interface for MITM applications.
 
 It acts like a deamon and offers two simple stream sockets, one for input and one for the output traffic manipulations.
-Over this sockets, before a packet, it's always appended it's size (16bit), and Janus expects to receive data back with this precise format.
+Over this sockets, to every packet, it's always appended its size (16bit), and Janus expects to receive data back with this precise format.
 The code is a portable and optimized rewrite of a first idea implemented in SniffJoke software written by Claudio Agosti.
 Janus overrides the actual routing table, creating a fake gateway with the aim to block packets after the kernel (on outgoing traffic) and before the kernel (on incoming traffic).
-Janus registers a fake arp entry with the aim to block packets after the kernel (on outgouing traffic) and before the kernel (on incoming traffic)
+Janus registers a fake ARP entry with the aim to block packets after the kernel (on outgouing traffic) and before the kernel (on incoming traffic)
 
 
 # Requirements
